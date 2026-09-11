@@ -123,7 +123,8 @@ describe('SLP/2 music embedder & random-start acquisition', () => {
         if (event.type === 'beacon') {
           const beaconConfidence =
             event.slots.reduce((sum, s) => sum + s.confidence, 0) / event.slots.length;
-          const res = consensus.addObservation(event.beacon, beaconConfidence, frame.timestampMs);
+          const wasRepaired = event.slots.some(s => s.repaired);
+          const res = consensus.addObservation(event.beacon, beaconConfidence, frame.timestampMs, wasRepaired);
           if (res) {
             resolvedId = res.contentId;
             latencyMs = frame.timestampMs;

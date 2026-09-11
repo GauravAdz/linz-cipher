@@ -148,10 +148,16 @@ export class SonicReceiver {
         }
 
         if (event.type === 'beacon') {
+          const wasRepaired = event.slots.some(s => s.repaired);
           const beaconConfidence =
             event.slots.reduce((sum, s) => sum + s.confidence, 0) / event.slots.length;
           callbacks.onBeacon?.(event.beacon, beaconConfidence);
-          const consensusResult = consensus.addObservation(event.beacon, beaconConfidence, timestampMs);
+          const consensusResult = consensus.addObservation(
+            event.beacon,
+            beaconConfidence,
+            timestampMs,
+            wasRepaired,
+          );
           if (consensusResult) {
             callbacks.onConsensus?.(consensusResult);
           }

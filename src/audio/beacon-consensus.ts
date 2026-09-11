@@ -6,6 +6,7 @@ export interface BeaconObservation {
   flags: number;
   confidence: number;
   timestamp: number;
+  wasRepaired?: boolean;
 }
 
 export interface ConsensusResult {
@@ -37,6 +38,7 @@ export class BeaconConsensus {
     beacon: AcousticBeacon,
     confidence: number,
     timestamp: number = Date.now(),
+    wasRepaired = false,
   ): ConsensusResult | null {
     const observation: BeaconObservation = {
       contentId: beacon.contentId,
@@ -44,13 +46,16 @@ export class BeaconConsensus {
       flags: beacon.flags,
       confidence,
       timestamp,
+      wasRepaired,
     };
 
     this.observations.push(observation);
     this.trim(timestamp);
 
     // Rule 1: Single packet with very high confidence
-    if (confidence >= this.highConfidenceThreshold) {
+    // CRITICAL: Repaired packets must NEVER confirm consensus on their own.
+    // Single packet consensus requires an uncorrupted, pristine packet.
+    if (!wasRepaired && confidence >= this.highConfidenceThreshold) {
       return {
         contentId: beacon.contentId,
         observations: [observation],
@@ -62,13 +67,18 @@ export class BeaconConsensus {
     // Rule 2: Multiple matching valid packets within the time window
     const matching = this.observations.filter(obs => obs.contentId === beacon.contentId);
     if (matching.length >= this.minMatchingObservations) {
-      const avgConfidence = matching.reduce((sum, o) => sum + o.confidence, 0) / matching.length;
-      return {
-        contentId: beacon.contentId,
-        observations: matching,
-        confidence: avgConfidence,
-        rule: 'multi_packet',
-      };
+      // Ensure observations are from distinct packets (separated in time by at least 1.5s)
+      const firstTime = Math.min(...matching.map(m => m.timestamp));
+      const lastTime = Math.max(...matching.map(m => m.timestamp));
+      if (lastTime - firstTime >= 1500) {
+        const avgConfidence = matching.reduce((sum, o) => sum + o.confidence, 0) / matching.length;
+        return {
+          contentId: beacon.contentId,
+          observations: matching,
+          confidence: avgConfidence,
+          rule: 'multi_packet',
+        };
+      }
     }
 
     return null;

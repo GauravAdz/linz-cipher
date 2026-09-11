@@ -302,6 +302,10 @@ export default function EmbedDebugPage() {
           onConsensus: res => {
             setLiveConsensus(res);
           },
+          validateBeacon: beacon => {
+            if (beacon.version !== BEACON_PROTOCOL_VERSION) return false;
+            return places.some(p => p.sonicId === beacon.contentId);
+          },
         },
         {
           carrierBank: selectedBank,

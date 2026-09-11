@@ -2,9 +2,9 @@ import { crc8 } from './protocol';
 
 export const BEACON_PROTOCOL_VERSION = 2;
 export const BEACON_PAYLOAD_SYMBOLS = 15;
-export const DEFAULT_BEACON_PREAMBLE = [0, 3, 1, 2] as const;
-export const EXTENDED_BEACON_PREAMBLE = [0, 3, 0, 3, 1, 2] as const;
-export const SHORT_BEACON_PREAMBLE = [0, 3, 1, 2] as const;
+export const DEFAULT_BEACON_PREAMBLE = [0, 3, 0, 2, 3, 1] as const;
+export const EXTENDED_BEACON_PREAMBLE = [0, 3, 0, 2, 3, 1] as const;
+export const SHORT_BEACON_PREAMBLE = [0, 3, 2, 1] as const;
 
 export const DEFAULT_BEACON_SYMBOL_MS = 130;
 export const DEFAULT_BEACON_TONE_MS = 105;
@@ -111,6 +111,10 @@ export function decodeBeaconPayload(symbols: readonly number[]): AcousticBeacon 
   }
 
   const version = symbols[0];
+  if (version !== BEACON_PROTOCOL_VERSION) {
+    throw new Error(`Invalid beacon version: ${version} (expected ${BEACON_PROTOCOL_VERSION})`);
+  }
+
   const contentId =
     (symbols[1] << 14) |
     (symbols[2] << 12) |

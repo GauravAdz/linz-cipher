@@ -111,8 +111,8 @@ export class BeaconDecoder {
     this.validateBeacon = options.validateBeacon;
     this.minSlotConfidence = options.minSlotConfidence ?? 1.05;
 
-    this.preamblePeriodMinMs = this.symbolMs * 0.88;
-    this.preamblePeriodMaxMs = this.symbolMs * 1.12;
+    this.preamblePeriodMinMs = this.symbolMs * 0.97;
+    this.preamblePeriodMaxMs = this.symbolMs * 1.03;
     this.preambleWindowMs = Math.round(this.symbolMs * 0.26);
     this.preambleBoundaryProbeMs = Math.round(this.symbolMs * 0.18);
     this.preambleBoundaryWindowMs = Math.round(this.symbolMs * 0.10);
@@ -239,9 +239,10 @@ export class BeaconDecoder {
 
     const periodStepMs = 2;
     const originStepMs = 10;
+    const latestStart = now - (this.preamble.length + 0.2) * this.preamblePeriodMaxMs;
+    if (latestStart <= oldest) return null;
 
     for (let period = this.preamblePeriodMinMs; period <= this.preamblePeriodMaxMs; period += periodStepMs) {
-      const latestStart = now - (this.preamble.length - 0.5) * period - this.preambleWindowMs;
       for (let start = oldest - period / 2; start <= latestStart; start += originStepMs) {
         let score = 0;
         let valid = true;
@@ -332,9 +333,12 @@ export class BeaconDecoder {
     const denominator = crossings.reduce((sum, value) => sum + (value.index - meanIndex) ** 2, 0);
     const rawPeriod = numerator / Math.max(denominator, 1e-9);
     if (rawPeriod < this.preamblePeriodMinMs || rawPeriod > this.preamblePeriodMaxMs) return lock;
+    if (Math.abs(rawPeriod - lock.symbolPeriodMs) > 0.05 * lock.symbolPeriodMs) return lock;
 
     const symbolPeriodMs = rawPeriod;
     const packetStartTime = meanTime - meanIndex * symbolPeriodMs;
+    if (Math.abs(packetStartTime - lock.packetStartTime) > lock.symbolPeriodMs * 0.35) return lock;
+
     return { ...lock, packetStartTime, symbolPeriodMs };
   }
 
@@ -376,8 +380,15 @@ export class BeaconDecoder {
 
     // Level 1: 1-symbol perturbation across all 15 slots
     for (const item of indexed) {
+      // Version symbol (index 0) must be 2; never perturb index 0 away from 2
+      if (item.index === 0 && baseSymbols[0] === 2) continue;
+
+      const topEnergy = item.carrierRank[0].energy;
       for (let rank = 1; rank < 4; rank++) {
         const alt = item.carrierRank[rank];
+        // Only test alternative carrier if its energy is substantial (at least 40% of top carrier)
+        if (alt.energy < topEnergy * 0.40) continue;
+
         const candidate = [...baseSymbols];
         candidate[item.index] = alt.carrier;
         testCandidate(candidate, 1);
@@ -387,15 +398,19 @@ export class BeaconDecoder {
     if (bestCandidate) return bestCandidate;
 
     // Level 2: 2-symbol perturbation across top 5 lowest-confidence slots
-    const top5 = indexed.slice(0, 5);
+    const top5 = indexed.filter(it => it.index !== 0).slice(0, 5);
     for (let i = 0; i < top5.length; i++) {
       for (let j = i + 1; j < top5.length; j++) {
         const itemA = top5[i];
         const itemB = top5[j];
         for (const rankA of [1, 2]) {
           const candA = itemA.carrierRank[rankA];
+          if (candA.energy < itemA.carrierRank[0].energy * 0.45) continue;
+
           for (const rankB of [1, 2]) {
             const candB = itemB.carrierRank[rankB];
+            if (candB.energy < itemB.carrierRank[0].energy * 0.45) continue;
+
             const candidate = [...baseSymbols];
             candidate[itemA.index] = candA.carrier;
             candidate[itemB.index] = candB.carrier;

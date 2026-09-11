@@ -119,7 +119,7 @@ describe('BPM Beat Quantization & Percussive Camouflage', () => {
     const slice = embedded.samples.subarray(startSample, startSample + listenWindow);
 
     const frames = analyzeBeaconTransmission(slice, sampleRate, 0, CARRIER_BANK_KEY_C);
-    const decoder = new BeaconDecoder();
+    const decoder = new BeaconDecoder({ symbolMs: 125 });
     const consensus = new BeaconConsensus({ highConfidenceThreshold: 1.6 });
 
     let decodedId: number | null = null;
@@ -128,7 +128,12 @@ describe('BPM Beat Quantization & Percussive Camouflage', () => {
       if (event.type === 'beacon') {
         const beaconConf =
           event.slots.reduce((acc, s) => acc + s.confidence, 0) / event.slots.length;
-        const res = consensus.addObservation(event.beacon, beaconConf, frame.timestampMs);
+        const res = consensus.addObservation(
+          event.beacon,
+          beaconConf,
+          frame.timestampMs,
+          event.slots.some(s => s.repaired),
+        );
         if (res) {
           decodedId = res.contentId;
           break;
