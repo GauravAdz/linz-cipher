@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .next/
+.vercel/
 .vinext/
 .wrangler/
 test-results/
