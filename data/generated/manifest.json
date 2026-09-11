@@ -1,0 +1,9 @@
+{
+  "protocol": "SLP/1",
+  "generatedAt": "2026-09-11T08:55:49.924Z",
+  "records": 1575,
+  "sources": {
+    "current": 1211,
+    "historical": 364
+  }
+}
