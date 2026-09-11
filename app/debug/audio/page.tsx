@@ -51,7 +51,15 @@ export default function AudioDebug() {
   };
   return (
     <main className="debug-shell">
-      <header className="topbar"><Link className="wordmark" href="/">SONIC LINZ</Link><div className="protocol-pill"><i /> AUDIO LAB</div></header>
+      <header className="topbar">
+        <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+          <Link className="wordmark" href="/">SONIC LINZ</Link>
+          <Link href="/debug/embed" style={{ color: 'var(--lime)', fontSize: '11px', textDecoration: 'none', fontFamily: 'var(--font-mono)' }}>
+            SLP/2 Embed Studio →
+          </Link>
+        </div>
+        <div className="protocol-pill"><i /> AUDIO LAB</div>
+      </header>
       <div className="debug-wrap">
         <div className="debug-head"><div><p className="eyebrow">SLP/1 DIAGNOSTICS</p><h1>Audio laboratory.</h1></div><button className="button button-primary" onClick={toggle}>{active ? 'Stop microphone' : 'Start microphone'}</button></div>
         <section className="meter-card">

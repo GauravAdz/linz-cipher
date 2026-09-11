@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ClockedPacketDecoder } from '../src/audio/clocked-decoder';
-import { SymbolStateMachine } from '../src/audio/detector';
+import { SymbolStateMachine, type CarrierSymbol } from '../src/audio/detector';
 import { PacketStreamDecoder, encodePacket, type SonicPacket } from '../src/protocol/protocol';
 import { SonicEvent, SonicMood } from '../src/data/types';
 import { analyzeTransmission, generateTransmission, type TransmissionOptions } from './audio-fixtures';
@@ -136,11 +136,11 @@ describe('clocked acoustic decoder', () => {
     for (const frame of frames) {
       if (Math.abs(frame.timestampMs - 3190) <= 60) {
         const trueWinner = frame.strongestSymbol;
-        const wrong = (trueWinner + 1) % 4;
+        const wrong = ((trueWinner + 1) % 4) as CarrierSymbol;
         const tmp = frame.energies[trueWinner];
         frame.energies[trueWinner] = frame.energies[wrong];
         frame.energies[wrong] = tmp * 1.05;
-        frame.strongestSymbol = wrong as any;
+        frame.strongestSymbol = wrong;
       }
     }
 
@@ -164,19 +164,19 @@ describe('clocked acoustic decoder', () => {
     for (const frame of frames) {
       if (Math.abs(frame.timestampMs - 2310) <= 70) {
         const trueWinner = frame.strongestSymbol;
-        const wrong = (trueWinner + 1) % 4;
+        const wrong = ((trueWinner + 1) % 4) as CarrierSymbol;
         const peak = frame.energies[trueWinner];
         frame.energies[wrong] = peak * 1.25;
         frame.energies[trueWinner] = peak * 0.8;
-        frame.strongestSymbol = wrong as any;
+        frame.strongestSymbol = wrong;
       }
       if (Math.abs(frame.timestampMs - 3850) <= 70) {
         const trueWinner = frame.strongestSymbol;
-        const wrong = (trueWinner + 2) % 4;
+        const wrong = ((trueWinner + 2) % 4) as CarrierSymbol;
         const peak = frame.energies[trueWinner];
         frame.energies[wrong] = peak * 1.25;
         frame.energies[trueWinner] = peak * 0.8;
-        frame.strongestSymbol = wrong as any;
+        frame.strongestSymbol = wrong;
       }
     }
 

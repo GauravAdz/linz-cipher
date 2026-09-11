@@ -1,9 +1,15 @@
 import { AUDIO_CONFIG } from '../src/audio/config';
 import { detectFrame, type DetectionFrame } from '../src/audio/detector';
+import { detectSlp2Frame, type Slp2DetectionFrame } from '../src/audio/slp2-detector';
 import { CARRIER_FREQUENCIES, SYMBOL_MS, TONE_MS, encodePacket, type SonicPacket } from '../src/protocol/protocol';
+import { encodeBeacon, DEFAULT_BEACON_SYMBOL_MS, DEFAULT_BEACON_TONE_MS, type AcousticBeacon } from '../src/protocol/beacon-protocol';
+import { CARRIER_BANK_4_6KHZ, type CarrierBank } from '../src/audio/carrier-bank';
 
 export interface TransmissionOptions {
-  packet: SonicPacket;
+  packet?: SonicPacket;
+  beacon?: AcousticBeacon;
+  carrierBank?: CarrierBank;
+  carrierFrequencies?: readonly [number, number, number, number];
   sampleRate: number;
   symbolMs?: number;
   toneMs?: number;
@@ -15,6 +21,8 @@ export interface TransmissionOptions {
   noiseSnrDb?: number;
   reverbMs?: number;
   pad?: number;
+  backgroundSamples?: Float32Array;
+  preamble?: readonly number[];
 }
 
 function envelope(timeMs: number, attackMs: number, decayMs: number, sustain: number, toneMs: number, releaseMs: number) {
@@ -28,13 +36,27 @@ function envelope(timeMs: number, attackMs: number, decayMs: number, sustain: nu
 
 export function generateTransmission(options: TransmissionOptions) {
   const {
-    packet, sampleRate, symbolMs = SYMBOL_MS, toneMs = TONE_MS, attackMs = 6, decayMs = 20,
-    sustain = 0.9, releaseMs = 25, amplitude = 0.42, noiseSnrDb = Number.POSITIVE_INFINITY,
-    reverbMs = 0, pad = 0,
+    packet, beacon, carrierBank, carrierFrequencies, sampleRate,
+    symbolMs = (beacon ? DEFAULT_BEACON_SYMBOL_MS : SYMBOL_MS),
+    toneMs = (beacon ? DEFAULT_BEACON_TONE_MS : TONE_MS),
+    attackMs = 6, decayMs = 20, sustain = 0.9, releaseMs = 25,
+    amplitude = 0.42, noiseSnrDb = Number.POSITIVE_INFINITY,
+    reverbMs = 0, pad = 0, backgroundSamples, preamble,
   } = options;
-  const symbols = encodePacket(packet);
+
+  let symbols: number[];
+  if (beacon) {
+    symbols = encodeBeacon(beacon, preamble);
+  } else if (packet) {
+    symbols = encodePacket(packet);
+  } else {
+    throw new Error('Either packet or beacon must be provided to generateTransmission');
+  }
+
+  const frequencies = carrierBank?.frequencies ?? carrierFrequencies ?? CARRIER_FREQUENCIES;
   const tailMs = Math.max(releaseMs, reverbMs) + 100;
-  const length = Math.ceil(((symbols.length * symbolMs + tailMs) / 1000) * sampleRate);
+  const baseLength = Math.ceil(((symbols.length * symbolMs + tailMs) / 1000) * sampleRate);
+  const length = backgroundSamples ? Math.max(baseLength, backgroundSamples.length) : baseLength;
   const dry = new Float32Array(length);
   let seed = 17;
   let phase = 0;
@@ -47,7 +69,7 @@ export function generateTransmission(options: TransmissionOptions) {
     const slotTime = timeMs - slot * symbolMs;
     const symbol = symbols[Math.min(slot, symbols.length - 1)] ?? previousSymbol;
     if (slot < symbols.length) previousSymbol = symbol;
-    phase += (2 * Math.PI * CARRIER_FREQUENCIES[symbol]) / sampleRate;
+    phase += (2 * Math.PI * frequencies[symbol]) / sampleRate;
     const gain = slot < symbols.length ? envelope(slotTime, attackMs, decayMs, sustain, toneMs, releaseMs) : 0;
     const padSignal = pad * (
       Math.sin((2 * Math.PI * 130.81 * index) / sampleRate)
@@ -56,7 +78,8 @@ export function generateTransmission(options: TransmissionOptions) {
     ) / 3;
     seed = (seed * 16807) % 2147483647;
     const noise = (((seed / 2147483647) * 2) - 1) * noiseAmplitude;
-    dry[index] = amplitude * gain * Math.sin(phase) + padSignal + noise;
+    const bg = backgroundSamples && index < backgroundSamples.length ? backgroundSamples[index] : 0;
+    dry[index] = amplitude * gain * Math.sin(phase) + padSignal + noise + bg;
   }
 
   if (!reverbMs) return dry;
@@ -74,6 +97,22 @@ export function analyzeTransmission(samples: Float32Array, sampleRate: number, p
   for (let start = Math.round((phaseOffsetMs / 1000) * sampleRate); start + windowSize <= samples.length; start += hop) {
     const centerMs = ((start + windowSize / 2) / sampleRate) * 1000;
     frames.push(detectFrame(samples.subarray(start, start + windowSize), sampleRate, centerMs));
+  }
+  return frames;
+}
+
+export function analyzeBeaconTransmission(
+  samples: Float32Array,
+  sampleRate: number,
+  phaseOffsetMs = 0,
+  carrierBank: CarrierBank = CARRIER_BANK_4_6KHZ,
+): Slp2DetectionFrame[] {
+  const windowSize = AUDIO_CONFIG.analysisFftSize;
+  const hop = Math.max(1, Math.round((AUDIO_CONFIG.analysisIntervalMs / 1000) * sampleRate));
+  const frames: Slp2DetectionFrame[] = [];
+  for (let start = Math.round((phaseOffsetMs / 1000) * sampleRate); start + windowSize <= samples.length; start += hop) {
+    const centerMs = ((start + windowSize / 2) / sampleRate) * 1000;
+    frames.push(detectSlp2Frame(samples.subarray(start, start + windowSize), sampleRate, centerMs, { carrierBank }));
   }
   return frames;
 }
