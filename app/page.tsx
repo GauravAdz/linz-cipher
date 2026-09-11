@@ -187,6 +187,10 @@ function Listen({ go, onDecoded }: { go: (screen: Screen) => void; onDecoded: (p
     const instance = new SonicReceiver(); receiver.current = instance;
     try {
       await instance.start({
+        validatePacket: (packet) => {
+          const place = places.find(item => item.sonicId === packet.sonicId);
+          return Boolean(place && place.semantic.eventType === packet.eventType);
+        },
         onFrame: (nextFrame, nextDiagnostics) => { setFrame(nextFrame); setDiagnostics(nextDiagnostics); },
         onEvent: (event: ClockedDecoderEvent) => {
           setDiagnostics(event.diagnostics);
@@ -217,15 +221,21 @@ function Listen({ go, onDecoded }: { go: (screen: Screen) => void; onDecoded: (p
 
   let qualityNotice = '';
   let qualityClass = '';
-  if (active && !locked) {
-    if ((frame?.peak ?? 0) > 0.92) {
-      qualityNotice = '⚠️ Audio clipping detected — lower Phone A volume to ~70%';
+  if (active) {
+    if (locked) {
+      qualityNotice = '✓ Synchronized · Receiving payload…';
+      qualityClass = 'ready';
+    } else if ((frame?.peak ?? 0) > 0.95) {
+      qualityNotice = '⚠️ Audio clipping detected — lower Phone A volume to ~75%';
       qualityClass = 'warn';
-    } else if ((frame?.rms ?? 0) > 0.02) {
-      qualityNotice = '⚠️ High ambient noise — hold devices closer (20–30 cm)';
+    } else if ((frame?.confidence ?? 0) >= 1.3 && (frame?.rms ?? 0) > 0.006) {
+      qualityNotice = 'Incoming tone detected · Synchronizing…';
+      qualityClass = 'ready';
+    } else if ((frame?.rms ?? 0) > 0.035 && (frame?.confidence ?? 0) < 1.3) {
+      qualityNotice = '⚠️ High background noise — hold devices closer (20–30 cm)';
       qualityClass = 'warn';
     } else if ((frame?.rms ?? 0) > 0.001) {
-      qualityNotice = '✓ Acoustic environment ready · Hold phones 20–50 cm apart';
+      qualityNotice = '✓ Microphone ready · Hold phones 20–50 cm apart';
       qualityClass = 'ready';
     }
   }

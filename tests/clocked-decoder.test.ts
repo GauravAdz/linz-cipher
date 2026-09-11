@@ -162,20 +162,20 @@ describe('clocked acoustic decoder', () => {
 
     // Perturb two slots: slot 4 (~2310 ms) and slot 11 (~3850 ms)
     for (const frame of frames) {
-      if (Math.abs(frame.timestampMs - 2310) <= 60) {
+      if (Math.abs(frame.timestampMs - 2310) <= 70) {
         const trueWinner = frame.strongestSymbol;
         const wrong = (trueWinner + 1) % 4;
         const peak = frame.energies[trueWinner];
-        frame.energies[wrong] = peak * 1.05;
-        frame.energies[trueWinner] = peak * 0.95;
+        frame.energies[wrong] = peak * 1.25;
+        frame.energies[trueWinner] = peak * 0.8;
         frame.strongestSymbol = wrong as any;
       }
-      if (Math.abs(frame.timestampMs - 3850) <= 60) {
+      if (Math.abs(frame.timestampMs - 3850) <= 70) {
         const trueWinner = frame.strongestSymbol;
         const wrong = (trueWinner + 2) % 4;
         const peak = frame.energies[trueWinner];
-        frame.energies[wrong] = peak * 1.05;
-        frame.energies[trueWinner] = peak * 0.95;
+        frame.energies[wrong] = peak * 1.25;
+        frame.energies[trueWinner] = peak * 0.8;
         frame.strongestSymbol = wrong as any;
       }
     }
@@ -190,5 +190,27 @@ describe('clocked acoustic decoder', () => {
     expect(decoded).toEqual(packet);
     expect(decoder.getDiagnostics().repairedPackets).toBe(1);
     expect(decoder.getDiagnostics().crcFailures).toBe(0);
+  });
+
+  it('accurately tracks fractional clock drift without slot accumulation error', () => {
+    // Non-grid symbol period (221.2 ms) that does not land on the 2ms grid step
+    const packet: SonicPacket = { version: 1, sonicId: 312, eventType: SonicEvent.NAME_CHANGED, mood: SonicMood.REFLECTIVE };
+    const result = decode({ packet, sampleRate: 48000, symbolMs: 221.2 }, 3);
+    expect(result.packet).toEqual(packet);
+    expect(result.diagnostics.crcFailures).toBe(0);
+  });
+
+  it('respects custom validatePacket in ClockedPacketDecoder', () => {
+    const validPacket: SonicPacket = { version: 1, sonicId: 50, eventType: SonicEvent.HISTORICAL_NAME, mood: SonicMood.WARM };
+    const decoder = new ClockedPacketDecoder({
+      validatePacket: pkt => pkt.sonicId === 50,
+    });
+    const frames = analyzeTransmission(generateTransmission({ packet: validPacket, sampleRate: 48000 }), 48000, 0);
+    let decoded: SonicPacket | undefined;
+    for (const frame of frames) {
+      const event = decoder.push(frame);
+      if (event.type === 'packet') decoded = event.packet;
+    }
+    expect(decoded).toEqual(validPacket);
   });
 });

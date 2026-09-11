@@ -2,6 +2,8 @@ import { ClockedPacketDecoder, type ClockedDecoderEvent, type DecoderDiagnostics
 import { AUDIO_CONFIG } from './config';
 import { detectFrame, type DetectionFrame } from './detector';
 
+import type { SonicPacket } from '../protocol/protocol';
+
 export interface ReceiverInfo {
   audioContextState: AudioContextState;
   sampleRate: number;
@@ -11,6 +13,7 @@ export interface ReceiverCallbacks {
   onFrame: (frame: DetectionFrame, diagnostics: DecoderDiagnostics) => void;
   onEvent: (event: ClockedDecoderEvent) => void;
   onInfo?: (info: ReceiverInfo) => void;
+  validatePacket?: (packet: SonicPacket) => boolean;
 }
 
 export class SonicReceiver {
@@ -47,7 +50,7 @@ export class SonicReceiver {
       source.connect(analyser);
 
       const samples = new Float32Array(analyser.fftSize);
-      const decoder = new ClockedPacketDecoder();
+      const decoder = new ClockedPacketDecoder({ validatePacket: callbacks.validatePacket });
       let lastUiUpdate = Number.NEGATIVE_INFINITY;
       callbacks.onInfo?.({ audioContextState: context.state, sampleRate: context.sampleRate });
       this.timer = window.setInterval(() => {

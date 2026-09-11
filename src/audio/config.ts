@@ -8,7 +8,7 @@ export const AUDIO_CONFIG = {
   analysisFftSize: 1024,
   analysisIntervalMs: 12,
   uiUpdateIntervalMs: 50,
-  analysisWindow: 'hann' as AnalysisWindow,
+  analysisWindow: 'rectangular' as AnalysisWindow,
 
   // Acquisition retains a complete preamble and searches both clock phase and
   // period. Boundary probes reject coincidental center-only matches.

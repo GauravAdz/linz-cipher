@@ -71,6 +71,10 @@ function symbolShare(slot: DecodedSlot | null, expected: number) {
   return total > 0 ? slot.energies[expected] / total : 0;
 }
 
+export interface ClockedPacketDecoderOptions {
+  validatePacket?: (packet: SonicPacket) => boolean;
+}
+
 export class ClockedPacketDecoder {
   private frames: DetectionFrame[] = [];
   private state: DecoderState = 'SEARCHING';
@@ -81,6 +85,11 @@ export class ClockedPacketDecoder {
     transmissionsHeard: 0, preambleLocks: 0, successfulPackets: 0, crcFailures: 0, syncLosses: 0,
     repairedPackets: 0,
   };
+  private options?: ClockedPacketDecoderOptions;
+
+  constructor(options?: ClockedPacketDecoderOptions) {
+    this.options = options;
+  }
 
   push(frame: DetectionFrame): ClockedDecoderEvent {
     this.frames.push(frame);
@@ -256,9 +265,7 @@ export class ClockedPacketDecoder {
     const denominator = crossings.reduce((sum, value) => sum + (value.index - meanIndex) ** 2, 0);
     const rawPeriod = numerator / Math.max(denominator, 1e-9);
     if (rawPeriod < AUDIO_CONFIG.preamblePeriodMinMs || rawPeriod > AUDIO_CONFIG.preamblePeriodMaxMs) return lock;
-    // Regularize the period towards the prior hypothesis from acquireLock to prevent noisy
-    // zero-crossings (e.g. from asymmetric room reverb decay) from tilting the slope.
-    const symbolPeriodMs = 0.5 * lock.symbolPeriodMs + 0.5 * rawPeriod;
+    const symbolPeriodMs = rawPeriod;
     const packetStartTime = meanTime - meanIndex * symbolPeriodMs;
     return { ...lock, packetStartTime, symbolPeriodMs };
   }
@@ -280,7 +287,11 @@ export class ClockedPacketDecoder {
     const testCandidate = (candidateSymbols: CarrierSymbol[], repairedCount: number) => {
       try {
         const pkt = decodePayload(candidateSymbols);
-        if (pkt.sonicId >= 1575) return;
+        if (this.options?.validatePacket) {
+          if (!this.options.validatePacket(pkt)) return;
+        } else {
+          if (pkt.sonicId < 0 || pkt.sonicId > 65535) return;
+        }
 
         let logLikelihood = 0;
         for (let i = 0; i < 20; i += 1) {
@@ -299,9 +310,9 @@ export class ClockedPacketDecoder {
     // Level 1: 1-symbol perturbation across all 20 slots
     for (const item of indexed) {
       for (let rank = 1; rank < 4; rank += 1) {
-        const altCarrier = item.carrierRank[rank].carrier;
+        const alt = item.carrierRank[rank];
         const candidate = [...baseSymbols];
-        candidate[item.index] = altCarrier;
+        candidate[item.index] = alt.carrier;
         testCandidate(candidate, 1);
       }
     }
@@ -315,10 +326,12 @@ export class ClockedPacketDecoder {
         const itemA = top6[i];
         const itemB = top6[j];
         for (const rankA of [1, 2]) {
+          const candA = itemA.carrierRank[rankA];
           for (const rankB of [1, 2]) {
+            const candB = itemB.carrierRank[rankB];
             const candidate = [...baseSymbols];
-            candidate[itemA.index] = itemA.carrierRank[rankA].carrier;
-            candidate[itemB.index] = itemB.carrierRank[rankB].carrier;
+            candidate[itemA.index] = candA.carrier;
+            candidate[itemB.index] = candB.carrier;
             testCandidate(candidate, 2);
           }
         }
