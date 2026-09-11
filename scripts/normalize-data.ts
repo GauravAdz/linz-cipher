@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import Papa from 'papaparse';
-import { SonicEvent, SonicMood, placeRecordSchema, interpretationSchema, type PlaceRecord, type Interpretation } from '../src/data/types';
+import { SonicEvent, SonicMood, placeRecordSchema, interpretationSchema, publicPlaceSchema, type PlaceRecord, type Interpretation, type PublicPlace } from '../src/data/types';
+import { englishNarrativeFor } from '../src/data/english-interpretation';
 
 type Raw = Record<string, string>;
 
@@ -49,8 +50,7 @@ const places: PlaceRecord[] = rows.map(({ sourceType, raw }, sonicId) => {
 function fraction(id: number, salt: number) { return (((id + 1) * salt) % 89) / 88; }
 const interpretations: Interpretation[] = places.map(place => interpretationSchema.parse({
   sonicId: place.sonicId,
-  headline: place.semantic.eventType === SonicEvent.NAME_CHANGED ? 'A name carried through time' : place.person?.name ? `A street remembers ${place.person.name}` : 'A trace in the city',
-  story: place.history.description ?? `${place.street.name} is recorded in the City of Linz street-name archive.`,
+  ...englishNarrativeFor(place),
   music: {
     tempo: 55 + Math.round(fraction(place.sonicId, 17) * 55),
     brightness: Number(fraction(place.sonicId, 29).toFixed(2)),
@@ -62,8 +62,20 @@ const interpretations: Interpretation[] = places.map(place => interpretationSche
   },
 }));
 
+const publicStories: PublicPlace[] = places.map((place, index) => publicPlaceSchema.parse({
+  sonicId: place.sonicId,
+  eventType: place.semantic.eventType,
+  streetName: place.street.name,
+  historicalName: place.street.historicalName,
+  currentName: place.street.currentName,
+  namingPeriod: place.history.namingPeriod,
+  sourceLink: place.raw.Link,
+  interpretation: interpretations[index],
+}));
+
 fs.mkdirSync('data/generated', { recursive: true });
 fs.writeFileSync('data/generated/places.json', JSON.stringify(places));
 fs.writeFileSync('data/generated/interpretations.json', JSON.stringify(interpretations));
+fs.writeFileSync('data/generated/public-stories.json', JSON.stringify(publicStories));
 fs.writeFileSync('data/generated/manifest.json', JSON.stringify({ protocol: 'SLP/1', generatedAt: new Date().toISOString(), records: places.length, sources: { current: current.length, historical: historical.length } }, null, 2));
 console.log(`Generated ${places.length} stable Sonic Records (${current.length} current, ${historical.length} historical).`);

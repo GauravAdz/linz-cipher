@@ -54,6 +54,15 @@ describe('clocked acoustic decoder', () => {
     }
   }, 30_000);
 
+  it.each([44100, 48000])('decodes the complete ambient presentation at %i Hz', sampleRate => {
+    for (const phase of [0, 3, 6, 9]) {
+      const result = decode({ packet: BASE_PACKET, sampleRate, ambientPresentation: true }, phase);
+      expect(result.packet, `phase=${phase}, error=${result.error}`).toEqual(BASE_PACKET);
+      expect(result.diagnostics.successfulPackets).toBe(1);
+      expect(result.diagnostics.crcFailures).toBe(0);
+    }
+  }, 30_000);
+
   it('decodes adjacent repeated carriers without null frames', () => {
     const packets: SonicPacket[] = [
       { version: 1, sonicId: 0, eventType: SonicEvent.UNKNOWN, mood: SonicMood.NEUTRAL },

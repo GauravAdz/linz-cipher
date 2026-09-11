@@ -4,6 +4,7 @@ import { detectSlp2Frame, type Slp2DetectionFrame } from '../src/audio/slp2-dete
 import { CARRIER_FREQUENCIES, SYMBOL_MS, TONE_MS, encodePacket, type SonicPacket } from '../src/protocol/protocol';
 import { encodeBeacon, DEFAULT_BEACON_SYMBOL_MS, DEFAULT_BEACON_TONE_MS, type AcousticBeacon } from '../src/protocol/beacon-protocol';
 import { CARRIER_BANK_4_6KHZ, type CarrierBank } from '../src/audio/carrier-bank';
+import { AMBIENT_TIMING, TRANSMISSION_ENVELOPE } from '../src/audio/transmitter';
 
 export interface TransmissionOptions {
   packet?: SonicPacket;
@@ -23,6 +24,7 @@ export interface TransmissionOptions {
   pad?: number;
   backgroundSamples?: Float32Array;
   preamble?: readonly number[];
+  ambientPresentation?: boolean;
 }
 
 function envelope(timeMs: number, attackMs: number, decayMs: number, sustain: number, toneMs: number, releaseMs: number) {
@@ -39,9 +41,12 @@ export function generateTransmission(options: TransmissionOptions) {
     packet, beacon, carrierBank, carrierFrequencies, sampleRate,
     symbolMs = (beacon ? DEFAULT_BEACON_SYMBOL_MS : SYMBOL_MS),
     toneMs = (beacon ? DEFAULT_BEACON_TONE_MS : TONE_MS),
-    attackMs = 6, decayMs = 20, sustain = 0.9, releaseMs = 25,
+    attackMs = TRANSMISSION_ENVELOPE.attackMs,
+    decayMs = TRANSMISSION_ENVELOPE.decayMs,
+    sustain = TRANSMISSION_ENVELOPE.sustain,
+    releaseMs = TRANSMISSION_ENVELOPE.releaseMs,
     amplitude = 0.42, noiseSnrDb = Number.POSITIVE_INFINITY,
-    reverbMs = 0, pad = 0, backgroundSamples, preamble,
+    reverbMs = 0, pad = 0, backgroundSamples, preamble, ambientPresentation = false,
   } = options;
 
   let symbols: number[];
@@ -54,8 +59,13 @@ export function generateTransmission(options: TransmissionOptions) {
   }
 
   const frequencies = carrierBank?.frequencies ?? carrierFrequencies ?? CARRIER_FREQUENCIES;
+  const payloadStartMs = ambientPresentation ? AMBIENT_TIMING.introLeadSeconds * 1000 : 0;
+  const payloadEndMs = payloadStartMs + symbols.length * symbolMs;
+  const resolutionEndMs = ambientPresentation
+    ? payloadEndMs + (AMBIENT_TIMING.payloadToResolutionSeconds + AMBIENT_TIMING.resolutionDurationSeconds) * 1000
+    : payloadEndMs;
   const tailMs = Math.max(releaseMs, reverbMs) + 100;
-  const baseLength = Math.ceil(((symbols.length * symbolMs + tailMs) / 1000) * sampleRate);
+  const baseLength = Math.ceil(((resolutionEndMs + tailMs) / 1000) * sampleRate);
   const length = backgroundSamples ? Math.max(baseLength, backgroundSamples.length) : baseLength;
   const dry = new Float32Array(length);
   let seed = 17;
@@ -65,12 +75,24 @@ export function generateTransmission(options: TransmissionOptions) {
 
   for (let index = 0; index < length; index += 1) {
     const timeMs = (index / sampleRate) * 1000;
-    const slot = Math.floor(timeMs / symbolMs);
-    const slotTime = timeMs - slot * symbolMs;
+    const payloadTimeMs = timeMs - payloadStartMs;
+    const slot = Math.floor(payloadTimeMs / symbolMs);
+    const slotTime = payloadTimeMs - slot * symbolMs;
     const symbol = symbols[Math.min(slot, symbols.length - 1)] ?? previousSymbol;
     if (slot < symbols.length) previousSymbol = symbol;
     phase += (2 * Math.PI * frequencies[symbol]) / sampleRate;
-    const gain = slot < symbols.length ? envelope(slotTime, attackMs, decayMs, sustain, toneMs, releaseMs) : 0;
+    const gain = payloadTimeMs >= 0 && slot < symbols.length ? envelope(slotTime, attackMs, decayMs, sustain, toneMs, releaseMs) : 0;
+    const introTime = timeMs - 60;
+    const resolutionTime = timeMs - payloadEndMs - AMBIENT_TIMING.payloadToResolutionSeconds * 1000;
+    const ambientGain = ambientPresentation
+      ? envelope(introTime, 280, 500, .38, AMBIENT_TIMING.introDurationSeconds * 1000, 220) * .035
+        + envelope(resolutionTime, 280, 500, .38, AMBIENT_TIMING.resolutionDurationSeconds * 1000, 400) * .04
+      : 0;
+    const ambientSignal = ambientGain * (
+      Math.sin((2 * Math.PI * 130.81 * index) / sampleRate)
+      + Math.sin((2 * Math.PI * 164.81 * index) / sampleRate)
+      + Math.sin((2 * Math.PI * 196 * index) / sampleRate)
+    ) / 3;
     const padSignal = pad * (
       Math.sin((2 * Math.PI * 130.81 * index) / sampleRate)
       + Math.sin((2 * Math.PI * 196 * index) / sampleRate)
@@ -79,7 +101,7 @@ export function generateTransmission(options: TransmissionOptions) {
     seed = (seed * 16807) % 2147483647;
     const noise = (((seed / 2147483647) * 2) - 1) * noiseAmplitude;
     const bg = backgroundSamples && index < backgroundSamples.length ? backgroundSamples[index] : 0;
-    dry[index] = amplitude * gain * Math.sin(phase) + padSignal + noise + bg;
+    dry[index] = amplitude * gain * Math.sin(phase) + ambientSignal + padSignal + noise + bg;
   }
 
   if (!reverbMs) return dry;
@@ -116,4 +138,3 @@ export function analyzeBeaconTransmission(
   }
   return frames;
 }
-

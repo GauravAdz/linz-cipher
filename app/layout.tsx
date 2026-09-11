@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 
@@ -11,19 +11,26 @@ const siteUrl = process.env.SITE_URL
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: 'Sonic Linz — The city speaks in music',
-  description: 'Hear Linz street history transmitted as music and decoded through sound.',
+  title: 'Sonic Linz — Listen to the city',
+  description: 'Encounter music in Linz, let your phone listen, and discover an English story connected to that place.',
   openGraph: {
-    title: 'SONIC LINZ',
-    description: 'The city speaks in music.',
+    title: 'Sonic Linz — Listen to the city',
+    description: 'Music in the streets of Linz carries stories of the places around you.',
     images: [{ url: '/og.png', width: 1200, height: 630, alt: 'SONIC LINZ — The city speaks in music' }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'SONIC LINZ',
-    description: 'The city speaks in music.',
+    title: 'Sonic Linz — Listen to the city',
+    description: 'Music in the streets of Linz carries stories of the places around you.',
     images: ['/og.png'],
   },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: '#050b14',
 };
 
 export default function RootLayout({

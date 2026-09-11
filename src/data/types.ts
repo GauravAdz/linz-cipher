@@ -47,3 +47,16 @@ export const interpretationSchema = z.object({
 });
 
 export type Interpretation = z.infer<typeof interpretationSchema>;
+
+export const publicPlaceSchema = z.object({
+  sonicId: z.number().int().min(0).max(65535),
+  eventType: z.nativeEnum(SonicEvent),
+  streetName: z.string(),
+  historicalName: z.string().optional(),
+  currentName: z.string().optional(),
+  namingPeriod: z.string().optional(),
+  sourceLink: z.string().optional(),
+  interpretation: interpretationSchema,
+});
+
+export type PublicPlace = z.infer<typeof publicPlaceSchema>;
