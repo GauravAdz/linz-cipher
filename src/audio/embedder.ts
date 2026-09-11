@@ -9,6 +9,53 @@ import { CARRIER_BANK_4_6KHZ, type CarrierBank } from './carrier-bank';
 import { analyzeMusic, getSlotCarrierEnergy } from './music-analyzer';
 
 export type EmbedProfile = 'ROBUST' | 'BALANCED' | 'SUBTLE';
+export type EnvelopeMode = 'SUSTAINED' | 'PERCUSSIVE';
+
+export interface BpmTiming {
+  bpm: number;
+  symbolMs: number;
+  toneMs: number;
+  subdivision: '1/16' | '1/16T' | '1/8';
+}
+
+/**
+ * Calculates beat-synchronized symbol duration quantized to musical subdivisions.
+ * Standard pop/electronic tempos (90–135 BPM) align to 1/16th notes (110–165 ms).
+ * This provides temporal onset masking: carrier attacks land directly on drum hits.
+ */
+export function bpmToSymbolTiming(bpm: number): BpmTiming {
+  const clampedBpm = Math.max(50, Math.min(220, Math.round(bpm)));
+  const sixteenthMs = 15000 / clampedBpm;
+
+  if (sixteenthMs >= 110 && sixteenthMs <= 165) {
+    const symbolMs = Math.round(sixteenthMs);
+    return {
+      bpm: clampedBpm,
+      symbolMs,
+      toneMs: Math.round(symbolMs * 0.82),
+      subdivision: '1/16',
+    };
+  } else if (sixteenthMs > 165) {
+    // Slower tempo: use 1/16th triplet (10,000 / BPM)
+    const tripletMs = 10000 / clampedBpm;
+    const symbolMs = Math.round(Math.max(110, Math.min(160, tripletMs)));
+    return {
+      bpm: clampedBpm,
+      symbolMs,
+      toneMs: Math.round(symbolMs * 0.82),
+      subdivision: '1/16T',
+    };
+  } else {
+    // Faster tempo: clamp 1/16th note to 110ms
+    const symbolMs = Math.round(Math.max(110, sixteenthMs));
+    return {
+      bpm: clampedBpm,
+      symbolMs,
+      toneMs: Math.round(symbolMs * 0.82),
+      subdivision: '1/16',
+    };
+  }
+}
 
 export interface EmbedOptions {
   profile: EmbedProfile;
@@ -23,6 +70,8 @@ export interface EmbedOptions {
   notchFilter: boolean;
   notchQ: number;
   preamble: readonly number[];
+  envelopeMode: EnvelopeMode;
+  bpm?: number;
 }
 
 export const PROFILE_CONFIGS: Record<EmbedProfile, Partial<EmbedOptions>> = {
@@ -59,6 +108,7 @@ export const DEFAULT_EMBED_OPTIONS: EmbedOptions = {
   notchFilter: true,
   notchQ: 25,
   preamble: DEFAULT_BEACON_PREAMBLE,
+  envelopeMode: 'SUSTAINED',
 };
 
 /**
@@ -114,15 +164,35 @@ export interface EmbedResult {
 }
 
 /**
- * Raised-cosine envelope for click-free carrier burst
+ * Raised-cosine or percussive envelope for click-free carrier burst
  */
 function symbolEnvelope(
   timeMs: number,
   attackMs: number,
   toneMs: number,
   releaseMs: number,
+  mode: EnvelopeMode = 'SUSTAINED',
 ): number {
   if (timeMs < 0) return 0;
+
+  if (mode === 'PERCUSSIVE') {
+    // Sharp transient attack (2-3 ms) mimicking a closed hi-hat or shaker hit
+    const hitAttack = Math.min(attackMs, 3);
+    if (timeMs < hitAttack) {
+      return timeMs / Math.max(hitAttack, 0.001);
+    }
+    if (timeMs > toneMs + releaseMs) return 0;
+    const decayTime = timeMs - hitAttack;
+    const decayLen = Math.max(toneMs - hitAttack, 20);
+    const rawExp = Math.exp(-decayTime / (decayLen * 0.32));
+    if (timeMs >= toneMs) {
+      const fadeFrac = Math.max(0, 1 - (timeMs - toneMs) / Math.max(releaseMs, 0.001));
+      return rawExp * fadeFrac;
+    }
+    return rawExp;
+  }
+
+  // Sustained smooth raised-cosine
   if (timeMs < attackMs) {
     return 0.5 * (1 - Math.cos((Math.PI * timeMs) / attackMs));
   }
@@ -136,7 +206,7 @@ function symbolEnvelope(
 
 /**
  * Embeds a continuously repeating SLP/2 beacon into an audio track.
- * Applies optional spectral notching and adaptive carrier amplitude.
+ * Applies optional spectral notching, BPM beat synchronization, and adaptive carrier amplitude.
  */
 export function embedBeacon(
   source: Float32Array | { samples: Float32Array; sampleRate: number; channelCount?: number },
@@ -156,6 +226,13 @@ export function embedBeacon(
     profile,
   };
 
+  // If BPM is specified, quantize symbol timing to 1/16th notes
+  if (optionsInput.bpm && optionsInput.bpm > 0) {
+    const timing = bpmToSymbolTiming(optionsInput.bpm);
+    options.symbolMs = timing.symbolMs;
+    options.toneMs = timing.toneMs;
+  }
+
   const {
     carrierBank,
     symbolMs,
@@ -168,6 +245,7 @@ export function embedBeacon(
     notchFilter,
     notchQ,
     preamble,
+    envelopeMode,
   } = options;
 
   const totalSamples = samples.length;
@@ -235,7 +313,7 @@ export function embedBeacon(
     for (let n = slotStartSample; n < slotEndSample; n++) {
       const timeMs = (n / sampleRate) * 1000;
       const slotTimeMs = timeMs - slotStartMs;
-      const env = symbolEnvelope(slotTimeMs, attackMs, toneMs, releaseMs);
+      const env = symbolEnvelope(slotTimeMs, attackMs, toneMs, releaseMs, envelopeMode);
 
       phase += (2 * Math.PI * carrierFreq) / sampleRate;
       const carrierSample = slotGain * env * Math.sin(phase);

@@ -7,12 +7,16 @@ import { type PlaceRecord } from '../../../src/data/types';
 import {
   ALL_CARRIER_BANKS,
   CARRIER_BANK_4_6KHZ,
+  createHarmonicCarrierBank,
   getCarrierBank,
+  type CarrierBank,
 } from '../../../src/audio/carrier-bank';
 import {
+  bpmToSymbolTiming,
   embedBeacon,
   type EmbedProfile,
   type EmbedResult,
+  type EnvelopeMode,
 } from '../../../src/audio/embedder';
 import { encodeWav } from '../../../src/audio/wav';
 import {
@@ -26,6 +30,7 @@ import type { BeaconDecoderDiagnostics } from '../../../src/audio/beacon-decoder
 import type { ConsensusResult } from '../../../src/audio/beacon-consensus';
 
 const places = placesJson as PlaceRecord[];
+const MUSICAL_KEYS = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
 
 export default function EmbedDebugPage() {
   // Source audio state
@@ -39,7 +44,20 @@ export default function EmbedDebugPage() {
     places.find(p => p.sonicId === 247) ?? places[0],
   );
   const [customId, setCustomId] = useState<number>(247);
+
+  // Musical Carrier Bank configuration
+  const [bankMode, setBankMode] = useState<'harmonic' | 'standard'>('harmonic');
+  const [musicalKey, setMusicalKey] = useState<string>('C');
+  const [musicalScale, setMusicalScale] = useState<'major' | 'minor'>('major');
   const [carrierBankId, setCarrierBankId] = useState<string>(CARRIER_BANK_4_6KHZ.id);
+
+  // BPM & Rhythm timing configuration
+  const [syncBpm, setSyncBpm] = useState<boolean>(true);
+  const [bpm, setBpm] = useState<number>(120);
+  const [tapTimestamps, setTapTimestamps] = useState<number[]>([]);
+
+  // Camouflage Envelope & Profile
+  const [envelopeMode, setEnvelopeMode] = useState<EnvelopeMode>('PERCUSSIVE');
   const [profile, setProfile] = useState<EmbedProfile>('BALANCED');
   const [symbolMs, setSymbolMs] = useState<number>(DEFAULT_BEACON_SYMBOL_MS);
   const [notchFilter, setNotchFilter] = useState<boolean>(true);
@@ -66,7 +84,33 @@ export default function EmbedDebugPage() {
   const [liveError, setLiveError] = useState('');
   const receiverRef = useRef<SonicReceiver | null>(null);
 
-  const selectedBank = getCarrierBank(carrierBankId);
+  const selectedBank: CarrierBank =
+    bankMode === 'harmonic'
+      ? createHarmonicCarrierBank(musicalKey, musicalScale)
+      : getCarrierBank(carrierBankId);
+
+  const bpmTiming = syncBpm ? bpmToSymbolTiming(bpm) : null;
+  const activeSymbolMs = bpmTiming ? bpmTiming.symbolMs : symbolMs;
+
+  const handleTapTempo = () => {
+    const now = performance.now();
+    setTapTimestamps(prev => {
+      const recent = prev.filter(t => now - t < 3000);
+      const updated = [...recent, now].slice(-5);
+      if (updated.length >= 2) {
+        let totalInterval = 0;
+        for (let i = 1; i < updated.length; i++) {
+          totalInterval += updated[i] - updated[i - 1];
+        }
+        const avgInterval = totalInterval / (updated.length - 1);
+        const calculatedBpm = Math.round(60000 / avgInterval);
+        if (calculatedBpm >= 50 && calculatedBpm <= 220) {
+          setBpm(calculatedBpm);
+        }
+      }
+      return updated;
+    });
+  };
 
   // Filter Linz places for search dropdown
   const filteredPlaces = searchQuery
@@ -158,8 +202,10 @@ export default function EmbedDebugPage() {
           {
             profile,
             carrierBank: selectedBank,
-            symbolMs,
+            symbolMs: activeSymbolMs,
             notchFilter,
+            envelopeMode,
+            bpm: syncBpm ? bpm : undefined,
           },
         );
 
@@ -259,7 +305,7 @@ export default function EmbedDebugPage() {
         },
         {
           carrierBank: selectedBank,
-          symbolMs,
+          symbolMs: activeSymbolMs,
         },
       );
       setLiveListening(true);
@@ -412,53 +458,350 @@ export default function EmbedDebugPage() {
           </div>
         </section>
 
-        {/* 3. Carrier & Profile Settings */}
+        {/* 3. Carrier, Harmony & Profile Settings */}
         <section className="meter-card" style={{ padding: '24px', marginBottom: '25px' }}>
-          <p className="eyebrow">STEP 3 · CARRIER BANK & EMBEDDING PROFILE</p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px' }}>
+          <p className="eyebrow">STEP 3 · MUSICAL HARMONY, BPM SYNC & PERCUSSIVE CAMOUFLAGE</p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '22px' }}>
+            {/* 3A: Musical Key & Carrier Tuning */}
             <div>
-              <label style={{ display: 'block', marginBottom: '8px', fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>
-                CARRIER BANK
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <label style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>
+                  CARRIER TUNING ARCHITECTURE
+                </label>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setBankMode('harmonic')}
+                    style={{
+                      padding: '4px 8px',
+                      fontSize: '10px',
+                      fontFamily: 'var(--font-mono)',
+                      background: bankMode === 'harmonic' ? 'var(--lime)' : 'rgba(255,255,255,0.06)',
+                      color: bankMode === 'harmonic' ? '#09090b' : 'var(--muted)',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Harmonic Scale
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBankMode('standard')}
+                    style={{
+                      padding: '4px 8px',
+                      fontSize: '10px',
+                      fontFamily: 'var(--font-mono)',
+                      background: bankMode === 'standard' ? 'var(--lime)' : 'rgba(255,255,255,0.06)',
+                      color: bankMode === 'standard' ? '#09090b' : 'var(--muted)',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Fixed Bands
+                  </button>
+                </div>
+              </div>
+
+              {bankMode === 'harmonic' ? (
+                <div>
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                    <div style={{ flex: 2 }}>
+                      <span style={{ display: 'block', fontSize: '10px', color: 'var(--muted)', fontFamily: 'var(--font-mono)', marginBottom: '4px' }}>
+                        SONG KEY
+                      </span>
+                      <select
+                        value={musicalKey}
+                        onChange={e => setMusicalKey(e.target.value)}
+                        style={{
+                          width: '100%',
+                          height: '42px',
+                          background: '#121216',
+                          border: '1px solid var(--line)',
+                          borderRadius: '8px',
+                          padding: '0 10px',
+                          color: 'var(--lime)',
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '14px',
+                          fontWeight: 'bold',
+                        }}
+                      >
+                        {MUSICAL_KEYS.map(k => (
+                          <option key={k} value={k}>
+                            Key {k}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div style={{ flex: 3 }}>
+                      <span style={{ display: 'block', fontSize: '10px', color: 'var(--muted)', fontFamily: 'var(--font-mono)', marginBottom: '4px' }}>
+                        SCALE MODE
+                      </span>
+                      <div style={{ display: 'flex', height: '42px' }}>
+                        <button
+                          type="button"
+                          onClick={() => setMusicalScale('major')}
+                          style={{
+                            flex: 1,
+                            border: '1px solid var(--line)',
+                            borderRight: 'none',
+                            borderTopLeftRadius: '8px',
+                            borderBottomLeftRadius: '8px',
+                            background: musicalScale === 'major' ? 'rgba(217,255,67,0.15)' : '#121216',
+                            color: musicalScale === 'major' ? 'var(--lime)' : 'white',
+                            borderColor: musicalScale === 'major' ? 'var(--lime)' : 'var(--line)',
+                            fontSize: '11px',
+                            fontFamily: 'var(--font-mono)',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Major (1·2·3·5)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMusicalScale('minor')}
+                          style={{
+                            flex: 1,
+                            border: '1px solid var(--line)',
+                            borderTopRightRadius: '8px',
+                            borderBottomRightRadius: '8px',
+                            background: musicalScale === 'minor' ? 'rgba(217,255,67,0.15)' : '#121216',
+                            color: musicalScale === 'minor' ? 'var(--lime)' : 'white',
+                            borderColor: musicalScale === 'minor' ? 'var(--lime)' : 'var(--line)',
+                            fontSize: '11px',
+                            fontFamily: 'var(--font-mono)',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Minor (1·3·4·5)
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Harmonic Note Badges */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginTop: '10px' }}>
+                    {selectedBank.frequencies.map((freq, i) => (
+                      <div
+                        key={freq}
+                        style={{
+                          background: 'rgba(255,255,255,0.03)',
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          borderRadius: '6px',
+                          padding: '6px 4px',
+                          textAlign: 'center',
+                        }}
+                      >
+                        <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--lime)', display: 'block' }}>
+                          {selectedBank.notes?.[i] ?? `#${i}`}
+                        </span>
+                        <small style={{ fontSize: '9px', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+                          {Math.round(freq)} Hz
+                        </small>
+                      </div>
+                    ))}
+                  </div>
+
+                  <p style={{ margin: '8px 0 0', fontSize: '10px', color: 'var(--muted)', fontFamily: 'var(--font-mono)', lineHeight: 1.4 }}>
+                    ✨ Consonant scale degrees in octave 7/8. Any audible bleed blends as musical sparkle/glockenspiel overtones rather than discordant beeps.
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <select
+                    value={carrierBankId}
+                    onChange={e => setCarrierBankId(e.target.value)}
+                    style={{
+                      width: '100%',
+                      height: '42px',
+                      background: '#121216',
+                      border: '1px solid var(--line)',
+                      borderRadius: '8px',
+                      padding: '0 12px',
+                      color: 'white',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '12px',
+                    }}
+                  >
+                    {ALL_CARRIER_BANKS.map(bank => (
+                      <option key={bank.id} value={bank.id}>
+                        {bank.name} ({bank.frequencies.join(', ')} Hz)
+                      </option>
+                    ))}
+                  </select>
+                  <p style={{ margin: '8px 0 0', fontSize: '10px', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+                    {selectedBank.description}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* 3B: BPM & Beat Subdivision Timing */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <label style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>
+                  BEAT QUANTIZATION & TEMPO
+                </label>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '10px', fontFamily: 'var(--font-mono)', color: syncBpm ? 'var(--lime)' : 'var(--muted)' }}>
+                  <input
+                    type="checkbox"
+                    checked={syncBpm}
+                    onChange={e => setSyncBpm(e.target.checked)}
+                  />
+                  <span>Sync BPM</span>
+                </label>
+              </div>
+
+              {syncBpm ? (
+                <div>
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
+                    <div style={{ flex: 1 }}>
+                      <input
+                        type="number"
+                        min={50}
+                        max={220}
+                        value={bpm}
+                        onChange={e => {
+                          const val = parseInt(e.target.value, 10);
+                          if (!isNaN(val)) setBpm(Math.max(50, Math.min(220, val)));
+                        }}
+                        style={{
+                          width: '100%',
+                          height: '42px',
+                          background: '#121216',
+                          border: '1px solid var(--line)',
+                          borderRadius: '8px',
+                          padding: '0 12px',
+                          color: 'var(--lime)',
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '18px',
+                          fontWeight: 'bold',
+                        }}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleTapTempo}
+                      className="button"
+                      style={{
+                        height: '42px',
+                        padding: '0 14px',
+                        fontSize: '11px',
+                        fontFamily: 'var(--font-mono)',
+                        borderColor: tapTimestamps.length > 0 ? 'var(--lime)' : 'var(--line)',
+                        color: tapTimestamps.length > 0 ? 'var(--lime)' : 'white',
+                      }}
+                    >
+                      👆 Tap Tempo {tapTimestamps.length > 1 ? `(${bpm})` : ''}
+                    </button>
+                  </div>
+
+                  {/* Computed timing breakdown */}
+                  <div
+                    style={{
+                      padding: '8px 12px',
+                      background: 'rgba(217,255,67,0.06)',
+                      border: '1px solid rgba(217,255,67,0.2)',
+                      borderRadius: '8px',
+                      fontSize: '11px',
+                      fontFamily: 'var(--font-mono)',
+                      color: 'var(--lime)',
+                    }}
+                  >
+                    <span>TEMPO: <b>{bpm} BPM</b> · 1/16th Note = <b>{activeSymbolMs} ms / symbol</b></span>
+                  </div>
+                  <p style={{ margin: '8px 0 0', fontSize: '10px', color: 'var(--muted)', fontFamily: 'var(--font-mono)', lineHeight: 1.4 }}>
+                    🥁 Temporal onset masking: carrier attacks land directly on drum hits and hi-hats, masking the acoustic onset.
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
+                    <span style={{ color: 'var(--muted)' }}>MANUAL SYMBOL DURATION</span>
+                    <b style={{ color: 'var(--lime)' }}>{symbolMs} MS</b>
+                  </div>
+                  <input
+                    type="range"
+                    min={110}
+                    max={165}
+                    step={5}
+                    value={symbolMs}
+                    onChange={e => setSymbolMs(parseInt(e.target.value, 10))}
+                    style={{ width: '100%', accentColor: 'var(--lime)' }}
+                  />
+                  <p style={{ margin: '8px 0 0', fontSize: '10px', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+                    Fixed duration without musical beat synchronization.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* 3C: Envelope Camouflage Style */}
+            <div>
+              <label style={{ display: 'block', marginBottom: '10px', fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>
+                ACOUSTIC CAMOUFLAGE ENVELOPE
               </label>
-              <select
-                value={carrierBankId}
-                onChange={e => setCarrierBankId(e.target.value)}
-                style={{
-                  width: '100%',
-                  height: '46px',
-                  background: '#121216',
-                  border: '1px solid var(--line)',
-                  borderRadius: '10px',
-                  padding: '0 12px',
-                  color: 'white',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '12px',
-                }}
-              >
-                {ALL_CARRIER_BANKS.map(bank => (
-                  <option key={bank.id} value={bank.id}>
-                    {bank.name} ({bank.frequencies.join(', ')} Hz)
-                  </option>
-                ))}
-              </select>
-              <p style={{ margin: '6px 0 0', fontSize: '10px', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
-                {selectedBank.description}
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setEnvelopeMode('PERCUSSIVE')}
+                  className="button"
+                  style={{
+                    flex: 1,
+                    minHeight: '42px',
+                    padding: '8px 10px',
+                    background: envelopeMode === 'PERCUSSIVE' ? 'rgba(217,255,67,0.15)' : 'transparent',
+                    borderColor: envelopeMode === 'PERCUSSIVE' ? 'var(--lime)' : 'var(--line)',
+                    color: envelopeMode === 'PERCUSSIVE' ? 'var(--lime)' : 'white',
+                    fontSize: '11px',
+                    textAlign: 'center',
+                  }}
+                >
+                  🥁 Percussive (Hi-Hat)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEnvelopeMode('SUSTAINED')}
+                  className="button"
+                  style={{
+                    flex: 1,
+                    minHeight: '42px',
+                    padding: '8px 10px',
+                    background: envelopeMode === 'SUSTAINED' ? 'rgba(217,255,67,0.15)' : 'transparent',
+                    borderColor: envelopeMode === 'SUSTAINED' ? 'var(--lime)' : 'var(--line)',
+                    color: envelopeMode === 'SUSTAINED' ? 'var(--lime)' : 'white',
+                    fontSize: '11px',
+                    textAlign: 'center',
+                  }}
+                >
+                  🌊 Sustained (Ambient)
+                </button>
+              </div>
+              <p style={{ margin: '8px 0 0', fontSize: '10px', color: 'var(--muted)', fontFamily: 'var(--font-mono)', lineHeight: 1.4 }}>
+                {envelopeMode === 'PERCUSSIVE'
+                  ? 'Fast 2ms attack with smooth exponential decay. Disguises carrier bursts as acoustic hi-hats or shaker percussion.'
+                  : 'Raised-cosine window across the whole slot duration. Best for ambient drones, strings, or pad textures.'}
               </p>
             </div>
 
+            {/* 3D: Audibility Profile & Spectral Notching */}
             <div>
-              <label style={{ display: 'block', marginBottom: '8px', fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>
-                AUDIBILITY PROFILE
+              <label style={{ display: 'block', marginBottom: '10px', fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>
+                AUDIBILITY PROFILE & NOTCHING
               </label>
               <div style={{ display: 'flex', gap: '8px' }}>
                 {(['SUBTLE', 'BALANCED', 'ROBUST'] as EmbedProfile[]).map(p => (
                   <button
                     key={p}
+                    type="button"
                     onClick={() => setProfile(p)}
                     className="button"
                     style={{
                       flex: 1,
-                      minHeight: '46px',
+                      minHeight: '42px',
                       background: profile === p ? 'var(--lime)' : 'transparent',
                       color: profile === p ? '#09090b' : 'white',
                       borderColor: profile === p ? 'var(--lime)' : 'var(--line)',
@@ -469,29 +812,8 @@ export default function EmbedDebugPage() {
                   </button>
                 ))}
               </div>
-              <p style={{ margin: '6px 0 0', fontSize: '10px', color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
-                {profile === 'ROBUST' && 'Higher carrier power for loud rooms or budget speakers.'}
-                {profile === 'BALANCED' && 'Balanced carrier amplitude; subtle in music, reliable across devices.'}
-                {profile === 'SUBTLE' && 'Minimal volume; near-transparent in acoustic mixes.'}
-              </p>
-            </div>
-
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
-                <span style={{ color: 'var(--muted)' }}>SYMBOL DURATION</span>
-                <b style={{ color: 'var(--lime)' }}>{symbolMs} MS</b>
-              </div>
-              <input
-                type="range"
-                min={120}
-                max={160}
-                step={5}
-                value={symbolMs}
-                onChange={e => setSymbolMs(parseInt(e.target.value, 10))}
-                style={{ width: '100%' }}
-              />
               <div style={{ marginTop: '12px' }}>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', fontFamily: 'var(--font-mono)' }}>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
                   <input
                     type="checkbox"
                     checked={notchFilter}
@@ -590,7 +912,7 @@ export default function EmbedDebugPage() {
                   const score = liveFrame?.narrowbandScores[i] ?? 1.0;
                   return (
                     <div key={f} className="carrier-row">
-                      <strong>#{i}</strong>
+                      <strong>{selectedBank.notes ? selectedBank.notes[i] : `#${i}`}</strong>
                       <small>{f} HZ</small>
                       <div>
                         <i style={{ transform: `scaleX(${Math.min(1, score / 20)})` }} />
