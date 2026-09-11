@@ -8,7 +8,42 @@ import { CARRIER_NOTES, PROTOCOL_VERSION, encodePacket, type SonicPacket } from 
 import { transmit } from '../src/audio/transmitter';
 import { SonicReceiver } from '../src/audio/receiver';
 import type { DetectionFrame } from '../src/audio/detector';
-import type { ClockedDecoderEvent, DecoderDiagnostics } from '../src/audio/clocked-decoder';
+import type { ClockedDecoderEvent, DecoderDiagnostics, DecodedSlot } from '../src/audio/clocked-decoder';
+
+function playConfirmationChime() {
+  try {
+    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const now = ctx.currentTime;
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    const gain2 = ctx.createGain();
+
+    osc1.frequency.value = 1046.5;
+    osc2.frequency.value = 1567.98;
+    osc1.type = 'sine';
+    osc2.type = 'sine';
+
+    osc1.connect(gain1).connect(ctx.destination);
+    osc2.connect(gain2).connect(ctx.destination);
+
+    gain1.gain.setValueAtTime(0, now);
+    gain1.gain.linearRampToValueAtTime(0.12, now + 0.02);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+
+    gain2.gain.setValueAtTime(0, now + 0.08);
+    gain2.gain.linearRampToValueAtTime(0.15, now + 0.10);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+
+    osc1.start(now);
+    osc1.stop(now + 0.13);
+    osc2.start(now + 0.08);
+    osc2.stop(now + 0.28);
+    osc2.onended = () => void ctx.close();
+  } catch {}
+}
 
 const places = placesJson as PlaceRecord[];
 const interpretations = interpretationsJson as Interpretation[];
@@ -126,7 +161,8 @@ function Transmit({ go }: { go: (screen: Screen) => void }) {
           <button className="button button-primary play-button" onClick={play} aria-busy={playing}>{playing ? 'Transmitting Linz…' : '▶  Play Sonic Record'}</button>
           <div className="progress"><i style={{ transform: `scaleX(${progress})` }} /></div>
           {error && <p className="error">{error}</p>}
-          <p className="packet-hint">26 NOTES · 40 BITS · CRC-8 · 5.7 SEC</p>
+          <p className="packet-hint">26 NOTES · 40 BITS · CRC-8 + CHASE FEC · 5.7 SEC</p>
+          <p className="transmit-guide">💡 <strong>Optimal transmission:</strong> Set volume to 70–80% (avoid speaker clipping). Hold devices 20–50 cm apart.</p>
         </section>
       </div>
       <Footer />
@@ -139,6 +175,7 @@ function Listen({ go, onDecoded }: { go: (screen: Screen) => void; onDecoded: (p
   const [active, setActive] = useState(false);
   const [locked, setLocked] = useState(false);
   const [symbols, setSymbols] = useState<number[]>([]);
+  const [slots, setSlots] = useState<DecodedSlot[]>([]);
   const [frame, setFrame] = useState<DetectionFrame | null>(null);
   const [diagnostics, setDiagnostics] = useState<DecoderDiagnostics | null>(null);
   const [error, setError] = useState('');
@@ -146,19 +183,27 @@ function Listen({ go, onDecoded }: { go: (screen: Screen) => void; onDecoded: (p
   useEffect(() => () => receiver.current?.stop(), []);
   const start = async () => {
     if (active) { receiver.current?.stop(); receiver.current = null; setActive(false); return; }
-    setError(''); setLocked(false); setSymbols([]); setDiagnostics(null);
+    setError(''); setLocked(false); setSymbols([]); setSlots([]); setDiagnostics(null);
     const instance = new SonicReceiver(); receiver.current = instance;
     try {
       await instance.start({
         onFrame: (nextFrame, nextDiagnostics) => { setFrame(nextFrame); setDiagnostics(nextDiagnostics); },
         onEvent: (event: ClockedDecoderEvent) => {
           setDiagnostics(event.diagnostics);
-          if (event.type === 'locked') { setLocked(true); setSymbols([]); }
-          if (event.type === 'slot') setSymbols(previous => [...previous, event.slot.symbol]);
+          if (event.type === 'locked') { setLocked(true); setSymbols([]); setSlots([]); }
+          if (event.type === 'slot') {
+            setSymbols(previous => [...previous, event.slot.symbol]);
+            setSlots(previous => [...previous, event.slot]);
+          }
           if (event.type === 'error') { setLocked(false); setError(event.reason); }
           if (event.type === 'packet') {
             setLocked(false);
             setSymbols(event.slots.map(slot => slot.symbol));
+            setSlots(event.slots);
+            playConfirmationChime();
+            if ('vibrate' in navigator) {
+              try { navigator.vibrate([40, 50, 40]); } catch {}
+            }
             const place = places.find(item => item.sonicId === event.packet.sonicId);
             if (place && place.semantic.eventType === event.packet.eventType) {
               instance.stop(); setActive(false); onDecoded(place);
@@ -170,6 +215,21 @@ function Listen({ go, onDecoded }: { go: (screen: Screen) => void; onDecoded: (p
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Microphone access failed.'); }
   };
 
+  let qualityNotice = '';
+  let qualityClass = '';
+  if (active && !locked) {
+    if ((frame?.peak ?? 0) > 0.92) {
+      qualityNotice = '⚠️ Audio clipping detected — lower Phone A volume to ~70%';
+      qualityClass = 'warn';
+    } else if ((frame?.rms ?? 0) > 0.02) {
+      qualityNotice = '⚠️ High ambient noise — hold devices closer (20–30 cm)';
+      qualityClass = 'warn';
+    } else if ((frame?.rms ?? 0) > 0.001) {
+      qualityNotice = '✓ Acoustic environment ready · Hold phones 20–50 cm apart';
+      qualityClass = 'ready';
+    }
+  }
+
   return (
     <main className="listen-shell screen-enter">
       <Brand onHome={() => go('home')} />
@@ -180,7 +240,8 @@ function Listen({ go, onDecoded }: { go: (screen: Screen) => void; onDecoded: (p
         <button className={`mic-button ${active ? 'active' : ''}`} onClick={start} aria-label={active ? 'Stop listening' : 'Start listening'}><span className="mic-glyph">◉</span><i /><i /><i /></button>
         <button className="listen-toggle" onClick={start}>{active ? 'STOP LISTENING' : 'PRESS TO LISTEN'}</button>
         <p className="privacy">Audio is analyzed locally on this device.<br />Nothing is recorded or uploaded.</p>
-        {(active || symbols.length > 0) && <DecoderConsole frame={frame} symbols={symbols} locked={locked} diagnostics={diagnostics} />}
+        {qualityNotice && <div className={`quality-notice ${qualityClass}`}>{qualityNotice}</div>}
+        {(active || symbols.length > 0) && <DecoderConsole frame={frame} symbols={symbols} slots={slots} locked={locked} diagnostics={diagnostics} />}
         {error && <p className="error console-error">{error}</p>}
       </section>
       <Footer />
@@ -188,13 +249,39 @@ function Listen({ go, onDecoded }: { go: (screen: Screen) => void; onDecoded: (p
   );
 }
 
-function DecoderConsole({ frame, symbols, locked, diagnostics }: { frame: DetectionFrame | null; symbols: number[]; locked: boolean; diagnostics: DecoderDiagnostics | null }) {
+function DecoderConsole({ frame, symbols, slots, locked, diagnostics }: { frame: DetectionFrame | null; symbols: number[]; slots: DecodedSlot[]; locked: boolean; diagnostics: DecoderDiagnostics | null }) {
   return (
     <div className="decoder-console" aria-live="polite">
-      <div className="console-head"><span><i className={frame?.detectedSymbol !== null ? 'live' : ''} /> {locked ? 'SIGNAL LOCKED' : 'SEARCHING FOR SIGNAL'}</span><b>{Math.round((frame?.confidence ?? 0) * 10) / 10}× CONF</b></div>
+      <div className="console-head">
+        <span><i className={frame?.detectedSymbol !== null ? 'live' : ''} /> {locked ? 'SIGNAL LOCKED' : 'SEARCHING FOR SIGNAL'}</span>
+        <b>{Math.round((frame?.confidence ?? 0) * 10) / 10}× CONF</b>
+      </div>
+      <div className="slot-grid" aria-label="Payload reception quality">
+        {Array.from({ length: 20 }, (_, i) => {
+          const slot = slots[i];
+          if (!slot) return <span key={i} className="slot-dot empty" title={`Slot ${i + 1}: waiting`}>○</span>;
+          const isRepaired = slot.repaired;
+          const isHighConf = slot.confidence >= 2.0;
+          const statusClass = isRepaired ? 'repaired' : isHighConf ? 'high' : 'medium';
+          const note = CARRIER_NOTES[slot.symbol].replace('b', '♭');
+          return (
+            <span
+              key={i}
+              className={`slot-dot ${statusClass}`}
+              title={`Slot ${i + 1}: ${note} (${slot.confidence.toFixed(1)}× conf${isRepaired ? ' · Auto-repaired' : ''})`}
+            >
+              <b>{note}</b>
+              <small>{slot.symbol.toString(2).padStart(2, '0')}</small>
+            </span>
+          );
+        })}
+      </div>
       <div className="symbol-stream">{symbols.length ? symbols.map((symbol, index) => <span key={`${index}-${symbol}`}><b>{CARRIER_NOTES[symbol].replace('b', '♭')}</b><small>{symbol.toString(2).padStart(2, '0')}</small></span>) : <p>··· &nbsp; waiting for preamble &nbsp; ···</p>}</div>
       <div className="bitstream">{symbols.map(s => s.toString(2).padStart(2, '0')).join('')}</div>
-      <div className="console-foot"><span>MIC RMS &nbsp; {((frame?.rms ?? 0) * 100).toFixed(1)}%</span><span>{diagnostics?.symbolPeriodMs ? `${diagnostics.symbolPeriodMs.toFixed(1)} MS · SLOT ${diagnostics.payloadSlot}/20` : 'LOCAL ANALYSIS'}</span></div>
+      <div className="console-foot">
+        <span>MIC RMS &nbsp; {((frame?.rms ?? 0) * 100).toFixed(1)}%</span>
+        <span>{diagnostics?.symbolPeriodMs ? `${diagnostics.symbolPeriodMs.toFixed(1)} MS · SLOT ${diagnostics.payloadSlot}/20` : 'LOCAL ANALYSIS'}</span>
+      </div>
     </div>
   );
 }

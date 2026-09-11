@@ -125,4 +125,70 @@ describe('clocked acoustic decoder', () => {
       expect(successes / attempts, condition.label).toBeGreaterThanOrEqual(0.95);
     }
   }, 120_000);
+
+  it('recovers 1-symbol corrupted packets via soft-decision Chase decoding', () => {
+    const packet: SonicPacket = { version: 1, sonicId: 350, eventType: SonicEvent.COMMEMORATION, mood: SonicMood.HOPEFUL };
+    const frames = analyzeTransmission(generateTransmission({ packet, sampleRate: 48000 }), 48000, 3);
+    
+    // Simulate an acoustic disturbance during payload slot 8 where noise flips the winner,
+    // leaving the true carrier as runner up.
+    // Preamble is 6 * 220 = 1320 ms. Slot 8 center is ~1320 + 8.5 * 220 = 3190 ms.
+    for (const frame of frames) {
+      if (Math.abs(frame.timestampMs - 3190) <= 60) {
+        const trueWinner = frame.strongestSymbol;
+        const wrong = (trueWinner + 1) % 4;
+        const tmp = frame.energies[trueWinner];
+        frame.energies[trueWinner] = frame.energies[wrong];
+        frame.energies[wrong] = tmp * 1.05;
+        frame.strongestSymbol = wrong as any;
+      }
+    }
+
+    const decoder = new ClockedPacketDecoder();
+    let decoded: SonicPacket | undefined;
+    for (const frame of frames) {
+      const event = decoder.push(frame);
+      if (event.type === 'packet') decoded = event.packet;
+    }
+
+    expect(decoded).toEqual(packet);
+    expect(decoder.getDiagnostics().repairedPackets).toBe(1);
+    expect(decoder.getDiagnostics().crcFailures).toBe(0);
+  });
+
+  it('recovers 2-symbol corrupted packets via pairwise soft-decision Chase decoding', () => {
+    const packet: SonicPacket = { version: 1, sonicId: 789, eventType: SonicEvent.HISTORICAL_NAME, mood: SonicMood.WARM };
+    const frames = analyzeTransmission(generateTransmission({ packet, sampleRate: 48000 }), 48000, 6);
+
+    // Perturb two slots: slot 4 (~2310 ms) and slot 11 (~3850 ms)
+    for (const frame of frames) {
+      if (Math.abs(frame.timestampMs - 2310) <= 60) {
+        const trueWinner = frame.strongestSymbol;
+        const wrong = (trueWinner + 1) % 4;
+        const peak = frame.energies[trueWinner];
+        frame.energies[wrong] = peak * 1.05;
+        frame.energies[trueWinner] = peak * 0.95;
+        frame.strongestSymbol = wrong as any;
+      }
+      if (Math.abs(frame.timestampMs - 3850) <= 60) {
+        const trueWinner = frame.strongestSymbol;
+        const wrong = (trueWinner + 2) % 4;
+        const peak = frame.energies[trueWinner];
+        frame.energies[wrong] = peak * 1.05;
+        frame.energies[trueWinner] = peak * 0.95;
+        frame.strongestSymbol = wrong as any;
+      }
+    }
+
+    const decoder = new ClockedPacketDecoder();
+    let decoded: SonicPacket | undefined;
+    for (const frame of frames) {
+      const event = decoder.push(frame);
+      if (event.type === 'packet') decoded = event.packet;
+    }
+
+    expect(decoded).toEqual(packet);
+    expect(decoder.getDiagnostics().repairedPackets).toBe(1);
+    expect(decoder.getDiagnostics().crcFailures).toBe(0);
+  });
 });

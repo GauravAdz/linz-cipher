@@ -17,6 +17,7 @@ export interface DecodedSlot {
   confidence: number;
   frameCount: number;
   energies: [number, number, number, number];
+  repaired?: boolean;
 }
 
 export interface DecoderDiagnostics {
@@ -30,6 +31,7 @@ export interface DecoderDiagnostics {
   successfulPackets: number;
   crcFailures: number;
   syncLosses: number;
+  repairedPackets: number;
 }
 
 export type ClockedDecoderEvent =
@@ -77,6 +79,7 @@ export class ClockedPacketDecoder {
   private diagnostics: DecoderDiagnostics = {
     state: 'SEARCHING', syncScore: 0, symbolPeriodMs: null, payloadSlot: 0, slotConfidence: null,
     transmissionsHeard: 0, preambleLocks: 0, successfulPackets: 0, crcFailures: 0, syncLosses: 0,
+    repairedPackets: 0,
   };
 
   push(frame: DetectionFrame): ClockedDecoderEvent {
@@ -118,19 +121,40 @@ export class ClockedPacketDecoder {
     this.diagnostics.slotConfidence = slot.confidence;
     if (this.slots.length < 20) return { type: 'slot', index, slot, diagnostics: this.snapshot() };
 
+    let packet: SonicPacket;
+    let wasRepaired = false;
     try {
-      const packet = decodePayload(this.slots.map(value => value.symbol));
-      const completedSlots = [...this.slots];
-      this.diagnostics.successfulPackets += 1;
-      this.resetToSearch(frame.timestampMs);
-      return { type: 'packet', packet, slots: completedSlots, diagnostics: this.snapshot() };
+      packet = decodePayload(this.slots.map(value => value.symbol));
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'Invalid packet';
-      if (reason === 'Checksum failed') this.diagnostics.crcFailures += 1;
-      else this.diagnostics.syncLosses += 1;
-      this.resetToSearch(frame.timestampMs);
-      return { type: 'error', reason, diagnostics: this.snapshot() };
+      if (reason === 'Checksum failed') {
+        const recovery = this.recoverPayload(this.slots);
+        if (recovery) {
+          packet = recovery.packet;
+          wasRepaired = true;
+          for (let i = 0; i < 20; i += 1) {
+            if (this.slots[i].symbol !== recovery.symbols[i]) {
+              this.slots[i].symbol = recovery.symbols[i];
+              this.slots[i].repaired = true;
+            }
+          }
+        } else {
+          this.diagnostics.crcFailures += 1;
+          this.resetToSearch(frame.timestampMs);
+          return { type: 'error', reason, diagnostics: this.snapshot() };
+        }
+      } else {
+        this.diagnostics.syncLosses += 1;
+        this.resetToSearch(frame.timestampMs);
+        return { type: 'error', reason, diagnostics: this.snapshot() };
+      }
     }
+
+    if (wasRepaired) this.diagnostics.repairedPackets += 1;
+    this.diagnostics.successfulPackets += 1;
+    const completedSlots = [...this.slots];
+    this.resetToSearch(frame.timestampMs);
+    return { type: 'packet', packet, slots: completedSlots, diagnostics: this.snapshot() };
   }
 
   reset() {
@@ -230,10 +254,78 @@ export class ClockedPacketDecoder {
       0,
     );
     const denominator = crossings.reduce((sum, value) => sum + (value.index - meanIndex) ** 2, 0);
-    const symbolPeriodMs = numerator / Math.max(denominator, 1e-9);
-    if (symbolPeriodMs < AUDIO_CONFIG.preamblePeriodMinMs || symbolPeriodMs > AUDIO_CONFIG.preamblePeriodMaxMs) return lock;
+    const rawPeriod = numerator / Math.max(denominator, 1e-9);
+    if (rawPeriod < AUDIO_CONFIG.preamblePeriodMinMs || rawPeriod > AUDIO_CONFIG.preamblePeriodMaxMs) return lock;
+    // Regularize the period towards the prior hypothesis from acquireLock to prevent noisy
+    // zero-crossings (e.g. from asymmetric room reverb decay) from tilting the slope.
+    const symbolPeriodMs = 0.5 * lock.symbolPeriodMs + 0.5 * rawPeriod;
     const packetStartTime = meanTime - meanIndex * symbolPeriodMs;
     return { ...lock, packetStartTime, symbolPeriodMs };
+  }
+
+  private recoverPayload(slots: DecodedSlot[]): { packet: SonicPacket; symbols: CarrierSymbol[]; repaired: number } | null {
+    const baseSymbols = slots.map(s => s.symbol);
+
+    // Rank slots by confidence in ascending order (weakest first)
+    const indexed = slots.map((slot, index) => {
+      const carrierRank = ([0, 1, 2, 3] as CarrierSymbol[])
+        .map(c => ({ carrier: c, energy: slot.energies[c] }))
+        .sort((a, b) => b.energy - a.energy);
+      return { index, slot, carrierRank };
+    }).sort((a, b) => a.slot.confidence - b.slot.confidence);
+
+    let bestCandidate: { packet: SonicPacket; symbols: CarrierSymbol[]; repaired: number } | null = null;
+    let bestScore = Number.NEGATIVE_INFINITY;
+
+    const testCandidate = (candidateSymbols: CarrierSymbol[], repairedCount: number) => {
+      try {
+        const pkt = decodePayload(candidateSymbols);
+        if (pkt.sonicId >= 1575) return;
+
+        let logLikelihood = 0;
+        for (let i = 0; i < 20; i += 1) {
+          const sym = candidateSymbols[i];
+          logLikelihood += Math.log(Math.max(slots[i].energies[sym], 1e-9));
+        }
+        if (logLikelihood > bestScore) {
+          bestScore = logLikelihood;
+          bestCandidate = { packet: pkt, symbols: [...candidateSymbols], repaired: repairedCount };
+        }
+      } catch {
+        // Invalid CRC or semantic bounds
+      }
+    };
+
+    // Level 1: 1-symbol perturbation across all 20 slots
+    for (const item of indexed) {
+      for (let rank = 1; rank < 4; rank += 1) {
+        const altCarrier = item.carrierRank[rank].carrier;
+        const candidate = [...baseSymbols];
+        candidate[item.index] = altCarrier;
+        testCandidate(candidate, 1);
+      }
+    }
+
+    if (bestCandidate) return bestCandidate;
+
+    // Level 2: 2-symbol perturbation across top 6 lowest confidence slots
+    const top6 = indexed.slice(0, 6);
+    for (let i = 0; i < top6.length; i += 1) {
+      for (let j = i + 1; j < top6.length; j += 1) {
+        const itemA = top6[i];
+        const itemB = top6[j];
+        for (const rankA of [1, 2]) {
+          for (const rankB of [1, 2]) {
+            const candidate = [...baseSymbols];
+            candidate[itemA.index] = itemA.carrierRank[rankA].carrier;
+            candidate[itemB.index] = itemB.carrierRank[rankB].carrier;
+            testCandidate(candidate, 2);
+          }
+        }
+      }
+    }
+
+    return bestCandidate;
   }
 
   private trimHistory(now: number) {
