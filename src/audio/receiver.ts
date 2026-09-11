@@ -1,14 +1,24 @@
-import { detectFrame, SymbolStateMachine, type DetectionFrame } from './detector';
+import { ClockedPacketDecoder, type ClockedDecoderEvent, type DecoderDiagnostics } from './clocked-decoder';
+import { AUDIO_CONFIG } from './config';
+import { detectFrame, type DetectionFrame } from './detector';
 
-export const ANALYSIS_FFT_SIZE = 1024;
-export const ANALYSIS_INTERVAL_MS = 12;
+export interface ReceiverInfo {
+  audioContextState: AudioContextState;
+  sampleRate: number;
+}
+
+export interface ReceiverCallbacks {
+  onFrame: (frame: DetectionFrame, diagnostics: DecoderDiagnostics) => void;
+  onEvent: (event: ClockedDecoderEvent) => void;
+  onInfo?: (info: ReceiverInfo) => void;
+}
 
 export class SonicReceiver {
   private context?: AudioContext;
   private stream?: MediaStream;
   private timer?: number;
 
-  async start(onFrame: (frame: DetectionFrame) => void, onSymbol: (symbol: number) => void) {
+  async start(callbacks: ReceiverCallbacks) {
     this.stop();
 
     if (!navigator.mediaDevices?.getUserMedia) throw new Error('Microphone access is not supported in this browser.');
@@ -33,21 +43,25 @@ export class SonicReceiver {
 
       const source = context.createMediaStreamSource(stream);
       const analyser = context.createAnalyser();
-      // The protocol has a 40 ms inter-symbol gap. A 4096-sample window is about
-      // 85 ms at 48 kHz and can bridge that gap, preventing the state machine from
-      // unlocking between repeated symbols. 1024 samples is ~21 ms at 48 kHz.
-      analyser.fftSize = ANALYSIS_FFT_SIZE;
+      analyser.fftSize = AUDIO_CONFIG.analysisFftSize;
       source.connect(analyser);
 
       const samples = new Float32Array(analyser.fftSize);
-      const machine = new SymbolStateMachine();
+      const decoder = new ClockedPacketDecoder();
+      let lastUiUpdate = Number.NEGATIVE_INFINITY;
+      callbacks.onInfo?.({ audioContextState: context.state, sampleRate: context.sampleRate });
       this.timer = window.setInterval(() => {
         analyser.getFloatTimeDomainData(samples);
-        const frame = detectFrame(samples, context.sampleRate);
-        onFrame(frame);
-        const symbol = machine.push(frame.detectedSymbol);
-        if (symbol !== null) onSymbol(symbol);
-      }, ANALYSIS_INTERVAL_MS);
+        const timestampMs = context.currentTime * 1000 - (analyser.fftSize / context.sampleRate) * 500;
+        const frame = detectFrame(samples, context.sampleRate, timestampMs);
+        const event = decoder.push(frame);
+        if (event.type !== 'searching') callbacks.onEvent(event);
+        if (timestampMs - lastUiUpdate >= AUDIO_CONFIG.uiUpdateIntervalMs) {
+          callbacks.onFrame(frame, decoder.getDiagnostics());
+          callbacks.onInfo?.({ audioContextState: context.state, sampleRate: context.sampleRate });
+          lastUiUpdate = timestampMs;
+        }
+      }, AUDIO_CONFIG.analysisIntervalMs);
     } catch (error) {
       this.stop();
       throw error;

@@ -2,13 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { SonicEvent, SonicMood, type Interpretation } from '../../../src/data/types';
+import { SonicEvent, SonicMood } from '../../../src/data/types';
 import { CARRIER_FREQUENCIES, CARRIER_NOTES } from '../../../src/protocol/protocol';
-import { SonicReceiver } from '../../../src/audio/receiver';
+import { SonicReceiver, type ReceiverInfo } from '../../../src/audio/receiver';
 import { transmit } from '../../../src/audio/transmitter';
 import type { DetectionFrame } from '../../../src/audio/detector';
-
-const testInterpretation: Interpretation = { sonicId: 42, headline: 'Test packet', story: 'Fixed diagnostic packet.', music: { tempo: 68, brightness: .4, density: .25, tension: .45, warmth: .6, rhythmicActivity: .2, texture: 'ambient' } };
+import type { DecoderDiagnostics } from '../../../src/audio/clocked-decoder';
 
 function playCarrier(frequency: number) {
   const context = new AudioContext();
@@ -19,12 +18,36 @@ function playCarrier(frequency: number) {
 }
 
 export default function AudioDebug() {
-  const [frame, setFrame] = useState<DetectionFrame | null>(null); const [active, setActive] = useState(false); const [last, setLast] = useState<number | null>(null); const receiver = useRef<SonicReceiver | null>(null);
+  const [frame, setFrame] = useState<DetectionFrame | null>(null);
+  const [active, setActive] = useState(false);
+  const [last, setLast] = useState<number | null>(null);
+  const [diagnostics, setDiagnostics] = useState<DecoderDiagnostics | null>(null);
+  const [info, setInfo] = useState<ReceiverInfo | null>(null);
+  const [crcOutcome, setCrcOutcome] = useState('—');
+  const [error, setError] = useState('');
+  const receiver = useRef<SonicReceiver | null>(null);
   useEffect(() => () => receiver.current?.stop(), []);
   const toggle = async () => {
     if (active) { receiver.current?.stop(); setActive(false); return; }
     const next = new SonicReceiver(); receiver.current = next;
-    await next.start(setFrame, setLast); setActive(true);
+    setError(''); setCrcOutcome('—');
+    try {
+      await next.start({
+        onFrame: (nextFrame, nextDiagnostics) => {
+          setFrame(nextFrame); setLast(nextFrame.detectedSymbol); setDiagnostics(nextDiagnostics);
+        },
+        onEvent: event => {
+          setDiagnostics(event.diagnostics);
+          if (event.type === 'slot') setLast(event.slot.symbol);
+          if (event.type === 'packet') setCrcOutcome('VALID');
+          if (event.type === 'error') setCrcOutcome(event.reason === 'Checksum failed' ? 'FAILED' : event.reason.toUpperCase());
+        },
+        onInfo: setInfo,
+      });
+      setActive(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Microphone access failed.');
+    }
   };
   return (
     <main className="debug-shell">
@@ -35,8 +58,12 @@ export default function AudioDebug() {
           <div className="rms-row"><span>MIC RMS</span><div><i style={{ transform: `scaleX(${Math.min(1, (frame?.rms ?? 0) * 8)})` }} /></div><b>{((frame?.rms ?? 0) * 100).toFixed(2)}%</b></div>
           {CARRIER_NOTES.map((note, index) => { const energy = frame?.energies[index] ?? 0; const strongest = Math.max(...(frame?.energies ?? [1])); return <div className="carrier-row" key={note}><strong>{note.replace('b', '♭')}</strong><small>{Math.round(CARRIER_FREQUENCIES[index])} HZ</small><div><i style={{ transform: `scaleX(${energy / Math.max(strongest, 1e-8)})` }} /></div><b>{energy.toExponential(1)}</b><button onClick={() => playCarrier(CARRIER_FREQUENCIES[index])}>PLAY</button></div>; })}
           <div className="detection"><span>DETECTED <b>{last === null ? '—' : CARRIER_NOTES[last].replace('b', '♭')}</b></span><span>CONFIDENCE <b>{(frame?.confidence ?? 0).toFixed(2)}×</b></span></div>
+          <div className="detection"><span>DECODER <b>{diagnostics?.state ?? 'SEARCHING'}</b></span><span>SYNC / CLOCK <b>{(diagnostics?.syncScore ?? 0).toFixed(2)} · {diagnostics?.symbolPeriodMs?.toFixed(1) ?? '—'} MS</b></span></div>
+          <div className="detection"><span>PAYLOAD SLOT <b>{diagnostics?.payloadSlot ?? 0} / 20</b></span><span>SLOT CONF / CRC <b>{diagnostics?.slotConfidence?.toFixed(2) ?? '—'}× · {crcOutcome}</b></span></div>
+          <div className="detection"><span>AUDIO CONTEXT <b>{info?.audioContextState?.toUpperCase() ?? '—'} · {info?.sampleRate ?? '—'} HZ</b></span><span>COUNTERS <b>{diagnostics?.successfulPackets ?? 0} OK · {diagnostics?.crcFailures ?? 0} CRC · {diagnostics?.syncLosses ?? 0} LOST</b></span></div>
         </section>
-        <section className="test-packet"><div><p className="eyebrow">FIXED TEST PACKET</p><h2>Record 0042</h2><p>NAME_CHANGED · REFLECTIVE · CRC-8</p></div><button className="button button-ghost" onClick={() => transmit({ version: 1, sonicId: 42, eventType: SonicEvent.NAME_CHANGED, mood: SonicMood.REFLECTIVE }, testInterpretation)}>Transmit test packet</button></section>
+        {error && <p className="error">{error}</p>}
+        <section className="test-packet"><div><p className="eyebrow">FIXED TEST PACKET</p><h2>Record 0042</h2><p>NAME_CHANGED · REFLECTIVE · CRC-8</p></div><button className="button button-ghost" onClick={() => void transmit({ version: 1, sonicId: 42, eventType: SonicEvent.NAME_CHANGED, mood: SonicMood.REFLECTIVE })}>Transmit test packet</button></section>
       </div>
     </main>
   );

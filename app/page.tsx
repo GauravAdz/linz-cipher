@@ -4,10 +4,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import placesJson from '../data/generated/places.json';
 import interpretationsJson from '../data/generated/interpretations.json';
 import { SonicEvent, type Interpretation, type PlaceRecord } from '../src/data/types';
-import { CARRIER_NOTES, PacketStreamDecoder, PROTOCOL_VERSION, type SonicPacket } from '../src/protocol/protocol';
+import { CARRIER_NOTES, PROTOCOL_VERSION, encodePacket, type SonicPacket } from '../src/protocol/protocol';
 import { transmit } from '../src/audio/transmitter';
 import { SonicReceiver } from '../src/audio/receiver';
 import type { DetectionFrame } from '../src/audio/detector';
+import type { ClockedDecoderEvent, DecoderDiagnostics } from '../src/audio/clocked-decoder';
 
 const places = placesJson as PlaceRecord[];
 const interpretations = interpretationsJson as Interpretation[];
@@ -79,19 +80,29 @@ function Transmit({ go }: { go: (screen: Screen) => void }) {
   const [symbol, setSymbol] = useState(0);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
+  const playingRef = useRef(false);
+  const transmission = useRef<AbortController | null>(null);
   const results = useMemo(() => {
     const pool = query ? places.filter(p => `${p.street.name} ${p.street.currentName ?? ''}`.toLocaleLowerCase('de').includes(query.toLocaleLowerCase('de'))) : featuredIds.map(id => places.find(p => p.sonicId === id)).filter(Boolean) as PlaceRecord[];
     return pool.slice(0, 7);
   }, [query]);
-  const interpretation = interpretationById.get(selected.sonicId)!;
+  useEffect(() => () => transmission.current?.abort(), []);
 
   const play = async () => {
-    if (playing) return;
+    if (playingRef.current) return;
+    playingRef.current = true;
     setError(''); setPlaying(true); setProgress(0);
     const packet: SonicPacket = { version: PROTOCOL_VERSION, sonicId: selected.sonicId, eventType: selected.semantic.eventType, mood: selected.semantic.mood };
-    try { await transmit(packet, interpretation, (next, index) => { setSymbol(next); setProgress((index + 1) / 26); }); }
+    const controller = new AbortController();
+    transmission.current = controller;
+    const symbolCount = encodePacket(packet).length;
+    try { await transmit(packet, (next, index) => { setSymbol(next); setProgress((index + 1) / symbolCount); }, controller.signal); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Audio could not start.'); }
-    finally { setPlaying(false); setProgress(0); }
+    finally {
+      if (transmission.current === controller) transmission.current = null;
+      playingRef.current = false;
+      setPlaying(false); setProgress(0);
+    }
   };
 
   return (
@@ -125,29 +136,35 @@ function Transmit({ go }: { go: (screen: Screen) => void }) {
 
 function Listen({ go, onDecoded }: { go: (screen: Screen) => void; onDecoded: (place: PlaceRecord) => void }) {
   const receiver = useRef<SonicReceiver | null>(null);
-  const decoder = useRef(new PacketStreamDecoder());
   const [active, setActive] = useState(false);
   const [locked, setLocked] = useState(false);
   const [symbols, setSymbols] = useState<number[]>([]);
   const [frame, setFrame] = useState<DetectionFrame | null>(null);
+  const [diagnostics, setDiagnostics] = useState<DecoderDiagnostics | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => () => receiver.current?.stop(), []);
   const start = async () => {
     if (active) { receiver.current?.stop(); receiver.current = null; setActive(false); return; }
-    setError(''); decoder.current.reset(); setSymbols([]);
+    setError(''); setLocked(false); setSymbols([]); setDiagnostics(null);
     const instance = new SonicReceiver(); receiver.current = instance;
     try {
-      await instance.start(setFrame, symbol => {
-        setSymbols(previous => [...previous.slice(-31), symbol]);
-        const result = decoder.current.push(symbol);
-        if (result.locked) setLocked(true);
-        if (result.error) { setLocked(false); setError(result.error); }
-        if (result.packet) {
-          setLocked(false); const place = places.find(item => item.sonicId === result.packet!.sonicId);
-          if (place && place.semantic.eventType === result.packet.eventType) { instance.stop(); setActive(false); onDecoded(place); }
-          else setError('Valid packet, but no matching Linz record was found.');
-        }
+      await instance.start({
+        onFrame: (nextFrame, nextDiagnostics) => { setFrame(nextFrame); setDiagnostics(nextDiagnostics); },
+        onEvent: (event: ClockedDecoderEvent) => {
+          setDiagnostics(event.diagnostics);
+          if (event.type === 'locked') { setLocked(true); setSymbols([]); }
+          if (event.type === 'slot') setSymbols(previous => [...previous, event.slot.symbol]);
+          if (event.type === 'error') { setLocked(false); setError(event.reason); }
+          if (event.type === 'packet') {
+            setLocked(false);
+            setSymbols(event.slots.map(slot => slot.symbol));
+            const place = places.find(item => item.sonicId === event.packet.sonicId);
+            if (place && place.semantic.eventType === event.packet.eventType) {
+              instance.stop(); setActive(false); onDecoded(place);
+            } else setError('Valid packet, but no matching Linz record was found.');
+          }
+        },
       });
       setActive(true);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Microphone access failed.'); }
@@ -163,7 +180,7 @@ function Listen({ go, onDecoded }: { go: (screen: Screen) => void; onDecoded: (p
         <button className={`mic-button ${active ? 'active' : ''}`} onClick={start} aria-label={active ? 'Stop listening' : 'Start listening'}><span className="mic-glyph">◉</span><i /><i /><i /></button>
         <button className="listen-toggle" onClick={start}>{active ? 'STOP LISTENING' : 'PRESS TO LISTEN'}</button>
         <p className="privacy">Audio is analyzed locally on this device.<br />Nothing is recorded or uploaded.</p>
-        {(active || symbols.length > 0) && <DecoderConsole frame={frame} symbols={symbols} locked={locked} />}
+        {(active || symbols.length > 0) && <DecoderConsole frame={frame} symbols={symbols} locked={locked} diagnostics={diagnostics} />}
         {error && <p className="error console-error">{error}</p>}
       </section>
       <Footer />
@@ -171,13 +188,13 @@ function Listen({ go, onDecoded }: { go: (screen: Screen) => void; onDecoded: (p
   );
 }
 
-function DecoderConsole({ frame, symbols, locked }: { frame: DetectionFrame | null; symbols: number[]; locked: boolean }) {
+function DecoderConsole({ frame, symbols, locked, diagnostics }: { frame: DetectionFrame | null; symbols: number[]; locked: boolean; diagnostics: DecoderDiagnostics | null }) {
   return (
     <div className="decoder-console" aria-live="polite">
       <div className="console-head"><span><i className={frame?.detectedSymbol !== null ? 'live' : ''} /> {locked ? 'SIGNAL LOCKED' : 'SEARCHING FOR SIGNAL'}</span><b>{Math.round((frame?.confidence ?? 0) * 10) / 10}× CONF</b></div>
       <div className="symbol-stream">{symbols.length ? symbols.map((symbol, index) => <span key={`${index}-${symbol}`}><b>{CARRIER_NOTES[symbol].replace('b', '♭')}</b><small>{symbol.toString(2).padStart(2, '0')}</small></span>) : <p>··· &nbsp; waiting for preamble &nbsp; ···</p>}</div>
       <div className="bitstream">{symbols.map(s => s.toString(2).padStart(2, '0')).join('')}</div>
-      <div className="console-foot"><span>MIC RMS &nbsp; {((frame?.rms ?? 0) * 100).toFixed(1)}%</span><span>LOCAL ANALYSIS</span></div>
+      <div className="console-foot"><span>MIC RMS &nbsp; {((frame?.rms ?? 0) * 100).toFixed(1)}%</span><span>{diagnostics?.symbolPeriodMs ? `${diagnostics.symbolPeriodMs.toFixed(1)} MS · SLOT ${diagnostics.payloadSlot}/20` : 'LOCAL ANALYSIS'}</span></div>
     </div>
   );
 }
@@ -212,6 +229,10 @@ function Footer() { return <footer><span>HUMANS HEAR MUSIC. MACHINES HEAR LINZ.<
 export default function SonicLinz() {
   const [screen, setScreen] = useState<Screen>('home');
   const [decoded, setDecoded] = useState<PlaceRecord | null>(null);
+  useEffect(() => {
+    document.documentElement.dataset.sonicLinzHydrated = 'true';
+    return () => { delete document.documentElement.dataset.sonicLinzHydrated; };
+  }, []);
   const go = (next: Screen) => { window.scrollTo(0, 0); setScreen(next); };
   if (screen === 'transmit') return <Transmit go={go} />;
   if (screen === 'listen') return <Listen go={go} onDecoded={place => { setDecoded(place); setScreen('reveal'); }} />;
