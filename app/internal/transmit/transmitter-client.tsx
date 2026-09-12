@@ -49,7 +49,7 @@ export default function InternalTransmitter() {
         await transmit(packet, (_, index) => setProgress((index + 1) / symbols.length), controller.signal, interpretationById.get(selected.sonicId)?.music);
       }, controller.signal);
     } catch (cause) {
-      console.error('[Sonic Linz] internal transmission failed', cause);
+      console.error('[LinzSings] internal transmission failed', cause);
       setError('Transmission could not start. Check the browser audio settings.');
     } finally {
       setPlaying(false);
@@ -62,7 +62,7 @@ export default function InternalTransmitter() {
   return (
     <main className="internal-shell">
       <header className="internal-header">
-        <div><p>SONIC LINZ · INSTALLATION TOOL</p><h1>Street transmitter</h1></div>
+        <div><p>LINZSINGS · INSTALLATION TOOL</p><h1>Street transmitter</h1></div>
         <Link href="/">Public experience</Link>
       </header>
       <div className="internal-grid">

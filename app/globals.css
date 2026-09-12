@@ -10,6 +10,8 @@
   --text-muted: #8da2b5;
   --cyan: #64e8f2;
   --cyan-bright: #a6f7f7;
+  --linz-yellow: #ffd500;
+  --linz-yellow-bright: #ffe36a;
   --violet: #8b7cf6;
   --line: rgba(166, 215, 235, 0.16);
   --line-strong: rgba(166, 232, 242, 0.32);
@@ -120,6 +122,10 @@ a { color: inherit; text-underline-offset: 0.22em; }
   cursor: pointer;
 }
 
+.wordmark-name { display: inline-flex; gap: 0.32em; }
+.wordmark-name span,
+.linz-accent { color: var(--linz-yellow); }
+
 .brand-mark {
   width: 1.5rem;
   height: 1.2rem;
@@ -154,23 +160,33 @@ a:focus-visible {
 }
 
 .intro-hero {
+  position: relative;
   width: 100%;
   max-width: 78rem;
+  min-height: 0;
   margin: 0 auto;
-  padding: clamp(2.75rem, 11vh, 5rem) 0 1rem;
-  display: flex;
-  flex-direction: column;
+  padding: clamp(1rem, 4svh, 2.5rem) 0;
+  display: grid;
+  place-items: center;
 }
 
-.intro-copy { position: relative; z-index: 2; }
+.intro-copy {
+  position: relative;
+  z-index: 2;
+  width: min(100%, 35rem);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
 
 .intro-copy h1 {
-  max-width: 12ch;
+  max-width: 13ch;
   margin: 0;
-  font-size: var(--type-title);
+  font-size: clamp(2.3rem, 11vw, 4.8rem);
   font-weight: 570;
   letter-spacing: -0.035em;
-  line-height: 0.98;
+  line-height: 0.96;
   text-wrap: balance;
 }
 
@@ -182,42 +198,16 @@ a:focus-visible {
 }
 
 .intro-dek {
-  max-width: 35rem;
-  margin: var(--space-4) 0 0;
-  color: var(--text-soft);
-  font-size: var(--type-body);
-  line-height: 1.62;
+  max-width: 28rem;
+  margin: clamp(1rem, 3svh, 1.5rem) 0 0;
+  color: #d8e6ee;
+  font-size: clamp(0.9375rem, 3.9vw, 1.125rem);
+  line-height: 1.5;
 }
 
-.simple-steps {
-  max-width: 32rem;
-  margin: var(--space-5) 0 0;
-  padding: 0;
-  display: grid;
-  gap: 0;
-  list-style: none;
-  border-top: 1px solid var(--line);
-}
-
-.simple-steps li {
-  min-height: 3.25rem;
-  display: grid;
-  grid-template-columns: 5.5rem 1fr;
-  align-items: center;
-  gap: var(--space-2);
-  border-bottom: 1px solid var(--line);
-}
-
-.simple-steps span {
-  color: var(--cyan-bright);
-  font-size: 0.75rem;
-  font-weight: 690;
-}
-
-.simple-steps p {
-  margin: 0;
-  color: var(--text-soft);
-  font-size: var(--type-small);
+.intro-action {
+  width: min(100%, 20rem);
+  margin-top: clamp(1.5rem, 5svh, 2.75rem);
 }
 
 .city-artwork {
@@ -314,22 +304,26 @@ a:focus-visible {
 .is-listening .city-orbit-b { animation: drift-reverse 10s var(--ease-out) infinite alternate; }
 .is-listening .city-light span { animation: breathe 2.2s ease-in-out infinite; }
 
-.mobile-action-dock {
-  position: fixed;
-  z-index: 4;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  width: auto;
-  padding:
-    2.25rem
-    max(1rem, env(safe-area-inset-right))
-    max(1rem, env(safe-area-inset-bottom))
-    max(1rem, env(safe-area-inset-left));
-  background: linear-gradient(to bottom, transparent, rgba(5, 11, 20, 0.96) 38%);
+.intro-screen {
+  height: 100svh;
+  min-height: 100svh;
+  max-height: 100svh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
-.intro-screen { padding-bottom: calc(6.5rem + env(safe-area-inset-bottom)); }
+.intro-hero > .city-artwork {
+  position: absolute;
+  z-index: 0;
+  top: 50%;
+  left: 50%;
+  width: min(128vw, 34rem);
+  margin: 0;
+  opacity: 0.3;
+  transform: translate(-48%, -50%);
+}
 
 .primary-action,
 .secondary-action {
@@ -349,9 +343,9 @@ a:focus-visible {
   gap: var(--space-2);
   padding: 0 1.15rem;
   border: 0;
-  background: var(--cyan-bright);
+  background: var(--linz-yellow);
   color: #041018;
-  box-shadow: 0 1rem 2.8rem rgba(31, 181, 196, 0.18);
+  box-shadow: 0 1rem 2.8rem rgba(255, 213, 0, 0.2);
 }
 
 .primary-action svg,
@@ -879,7 +873,7 @@ a:focus-visible {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .primary-action:hover { background: #c2ffff; box-shadow: 0 1.2rem 3.2rem rgba(31, 181, 196, 0.26); }
+  .primary-action:hover { background: var(--linz-yellow-bright); box-shadow: 0 1.2rem 3.2rem rgba(255, 213, 0, 0.28); }
   .secondary-action:hover { background: rgba(255, 255, 255, 0.06); border-color: var(--line-strong); }
   .wordmark:hover, .text-back:hover, .source-link:hover { color: var(--cyan-bright); }
 }
@@ -890,7 +884,6 @@ a:focus-visible {
     padding-left: max(2rem, env(safe-area-inset-left));
   }
   .header-context { display: inline; }
-  .mobile-action-dock .primary-action { max-width: 35rem; margin: 0 auto; }
   .discovery-actions { grid-template-columns: 1.2fr 1fr; }
   .namesake-section { grid-template-columns: 6rem minmax(0, 1fr); align-items: start; }
   .archive-section { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
@@ -899,25 +892,25 @@ a:focus-visible {
 @media (min-width: 56rem) {
   .site-header { max-width: 78rem; margin: 0 auto; min-height: 5.25rem; }
   .intro-hero {
-    min-height: calc(100svh - 10rem);
-    padding: 3.5rem 0;
+    min-height: 0;
+    padding: clamp(2rem, 6svh, 4rem) 0;
     display: grid;
     grid-template-columns: minmax(0, 1.05fr) minmax(25rem, 0.95fr);
     align-items: center;
     gap: 2rem;
   }
+  .intro-copy { align-items: flex-start; text-align: left; }
   .intro-copy h1 { font-size: clamp(4.6rem, 7.2vw, 6rem); }
-  .city-artwork { width: min(43vw, 36rem); margin: 0; transform: none; }
-  .mobile-action-dock {
+  .intro-action { width: 18rem; }
+  .intro-hero > .city-artwork {
     position: relative;
-    max-width: 78rem;
-    margin-top: -8rem;
-    padding-bottom: 5rem;
-    padding-right: 0;
-    padding-left: 0;
-    background: none;
+    top: auto;
+    left: auto;
+    width: min(43vw, 36rem);
+    margin: 0;
+    opacity: 1;
+    transform: none;
   }
-  .mobile-action-dock .primary-action { width: 18rem; }
   .site-footer { max-width: 78rem; margin: 0 auto; }
   .listening-stage { min-height: calc(100svh - 10rem); justify-content: center; padding-bottom: 4rem; }
   .listener-visual { min-height: 24rem; }
@@ -942,6 +935,15 @@ a:focus-visible {
   .namesake-section,
   .archive-section { margin-left: -3rem; }
   .discovery-actions { max-width: 38rem; margin-left: 1rem; }
+}
+
+@media (max-height: 35rem) and (max-width: 55.99rem) {
+  .intro-screen .site-header { min-height: 3.5rem; }
+  .intro-screen .site-footer { display: none; }
+  .intro-hero { padding-block: 0.75rem; }
+  .intro-copy h1 { font-size: clamp(2rem, 8.5vw, 3.25rem); }
+  .intro-dek { margin-top: 0.75rem; }
+  .intro-action { margin-top: 1rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

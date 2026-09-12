@@ -11,17 +11,17 @@ const siteUrl = process.env.SITE_URL
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: 'Sonic Linz — Listen to the city',
-  description: 'Encounter music in Linz, let your phone listen, and discover an English story connected to that place.',
+  title: 'LinzSings — Listen to the city',
+  description: 'Linz city has something to sing to you. Hold your phone near the music and listen.',
   openGraph: {
-    title: 'Sonic Linz — Listen to the city',
-    description: 'Music in the streets of Linz carries stories of the places around you.',
-    images: [{ url: '/og.png', width: 1200, height: 630, alt: 'SONIC LINZ — The city speaks in music' }],
+    title: 'LinzSings — Listen to the city',
+    description: 'Linz city has something to sing to you.',
+    images: [{ url: '/og.png', width: 1200, height: 630, alt: 'LinzSings — Listen to the city' }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Sonic Linz — Listen to the city',
-    description: 'Music in the streets of Linz carries stories of the places around you.',
+    title: 'LinzSings — Listen to the city',
+    description: 'Linz city has something to sing to you.',
     images: ['/og.png'],
   },
 };

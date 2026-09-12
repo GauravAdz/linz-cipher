@@ -3,9 +3,10 @@ import { expect, test } from '@playwright/test';
 test('presents one clear visitor path into listening', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('html')).toHaveAttribute('data-sonic-linz-hydrated', 'true', { timeout: 15_000 });
-  await expect(page.getByRole('heading', { name: /The city has something to tell you/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Linz city has something to sing to you/i })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Listen to the city' })).toBeVisible();
-  await expect(page.getByText(/Musical pieces are playing at selected places around Linz/i)).toBeVisible();
+  await expect(page.getByText(/Tap “Listen to the city.” Hold your phone near the music./i)).toBeVisible();
+  await expect(page.getByText(/Musical pieces are playing at selected places around Linz/i)).toHaveCount(0);
   await expect(page.getByText(/Transmit a street|Sonic ID|checksum|bits|carrier|RMS|confidence/i)).toHaveCount(0);
   await expect(page.locator('a[href*="/debug"], a[href*="/internal"]')).toHaveCount(0);
 });
@@ -59,9 +60,14 @@ for (const width of [320, 360, 390, 430]) {
     const dimensions = await page.evaluate(() => ({
       viewport: document.documentElement.clientWidth,
       page: document.documentElement.scrollWidth,
+      viewportHeight: document.documentElement.clientHeight,
+      pageHeight: document.documentElement.scrollHeight,
       button: document.querySelector<HTMLButtonElement>('.primary-action')?.getBoundingClientRect().toJSON(),
+      artworkPosition: getComputedStyle(document.querySelector<HTMLElement>('.intro-hero > .city-artwork')!).position,
     }));
     expect(dimensions.page).toBeLessThanOrEqual(dimensions.viewport);
+    expect(dimensions.pageHeight).toBeLessThanOrEqual(dimensions.viewportHeight);
+    expect(dimensions.artworkPosition).toBe('absolute');
     expect(dimensions.button?.height).toBeGreaterThanOrEqual(44);
     expect(dimensions.button?.top).toBeGreaterThanOrEqual(0);
     expect(dimensions.button?.bottom).toBeLessThanOrEqual(780);

@@ -8,11 +8,11 @@ web
 
 ## Users
 
-Visitors, tourists, families, and local residents encountering a Sonic Linz installation outdoors on a phone. Most have no technical knowledge of the acoustic protocol and need to understand the experience at a glance, often while walking or standing in a busy public place.
+Visitors, tourists, families, and local residents encountering a LinzSings installation outdoors on a phone. Most have no technical knowledge of the acoustic protocol and need to understand the experience at a glance, often while walking or standing in a busy public place.
 
 ## Product Purpose
 
-Sonic Linz turns music playing at selected places in Linz into an entry point for discovering an English-language story about that place. Success means a visitor can open the site, start listening with one hand, and comfortably read the revealed story without needing to understand how the sound carries data.
+LinzSings turns music playing at selected places in Linz into an entry point for discovering an English-language story about that place. Success means a visitor can open the site, start listening with one hand, and comfortably read the revealed story without needing to understand how the sound carries data.
 
 ## Positioning
 
@@ -33,7 +33,7 @@ The primary journey has three stages: introduction, listening, and discovery. Li
 
 ## Brand Commitments
 
-The product name is Sonic Linz. Its voice is calm, clear, welcoming, and culturally literate. The visual world is connected to Linz, the Danube at night, contemporary media art, and technological civic culture without copying Ars Electronica branding or becoming an aggressive cyberpunk interface.
+The product name is LinzSings. Its voice is calm, clear, welcoming, and culturally literate. Linz yellow identifies the city name and the primary invitation to listen. The visual world is connected to Linz, the Danube at night, contemporary media art, and technological civic culture without copying Ars Electronica branding or becoming an aggressive cyberpunk interface.
 
 ## Evidence on Hand
 

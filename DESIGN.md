@@ -1,4 +1,4 @@
-# Sonic Linz Visual System
+# LinzSings Visual System
 
 ## Direction
 
@@ -6,7 +6,7 @@ Illuminated river atlas: a contemporary public-media-art surface inspired by Lin
 
 ## Color
 
-Use cool near-black backgrounds with a subtle blue bias, luminous cyan as the action and focus color, violet as a low-volume depth accent, and warm off-white for reading. Secondary text remains high-contrast blue-gray. Reserve saturated light for the active listening control and discovery marker.
+Use cool near-black backgrounds with a subtle blue bias, Linz yellow for the city name and primary invitation, luminous cyan for active listening and focus, violet as a low-volume depth accent, and warm off-white for reading. Secondary text remains high-contrast blue-gray.
 
 ## Typography
 

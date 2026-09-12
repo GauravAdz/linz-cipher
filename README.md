@@ -1,6 +1,6 @@
-# SONIC LINZ
+# LinzSings
 
-**The city speaks in music.** SONIC LINZ is a mobile-first, offline-ready web experience that turns official Linz street-name records into musical transmissions. A transmitter plays an expressive composition with a deterministic data melody; a second device hears the melody through its microphone, validates its checksum, and reveals the exact source record.
+**Linz city has something to sing to you.** LinzSings is a mobile-first, offline-ready web experience that turns official Linz street-name records into musical transmissions. A transmitter plays an expressive composition with a deterministic data melody; a second device hears the melody through its microphone, validates its checksum, and reveals the exact source record.
 
 ## Start
 

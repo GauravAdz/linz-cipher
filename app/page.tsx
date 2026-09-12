@@ -20,11 +20,11 @@ type ListeningPhase = 'idle' | 'requesting' | 'listening' | 'detected' | 'almost
 function Brand({ onHome }: { onHome: () => void }) {
   return (
     <header className="site-header">
-      <button className="wordmark" onClick={onHome} aria-label="Sonic Linz, back to the start">
+      <button className="wordmark" onClick={onHome} aria-label="LinzSings, back to the start">
         <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span>
-        <span>SONIC LINZ</span>
+        <span className="wordmark-name"><span>LINZ</span>SINGS</span>
       </button>
-      <span className="header-context">Stories carried by music</span>
+      <span className="header-context">Listen to Linz</span>
     </header>
   );
 }
@@ -48,24 +48,19 @@ function Introduction({ onListen, preparing, error }: { onListen: () => void; pr
       <Brand onHome={() => undefined} />
       <section className="intro-hero">
         <div className="intro-copy">
-          <h1>The city has<br />something to <em>tell you.</em></h1>
-          <p className="intro-dek">Musical pieces are playing at selected places around Linz. Each one carries an English story connected to the street where you hear it.</p>
-          <ol className="simple-steps" aria-label="How it works">
-            <li><span aria-hidden="true">Find</span><p>Encounter a Sonic Linz location.</p></li>
-            <li><span aria-hidden="true">Listen</span><p>Allow microphone access.</p></li>
-            <li><span aria-hidden="true">Discover</span><p>Let your phone hear the music.</p></li>
-          </ol>
+          <h1><span className="linz-accent">Linz</span> city has something to <em>sing to you.</em></h1>
+          <p className="intro-dek">Tap “Listen to the city.” Hold your phone near the music.</p>
+          <div className="intro-action">
+            {error ? <p className="intro-load-error" role="alert">{error}</p> : null}
+            <button className="primary-action" onClick={onListen} disabled={preparing} aria-busy={preparing}>
+              <span className="action-dot" aria-hidden="true" />
+              {preparing ? 'Preparing listener…' : 'Listen to the city'}
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
+            </button>
+          </div>
         </div>
         <CityArtwork />
       </section>
-      <div className="mobile-action-dock">
-        {error ? <p className="intro-load-error" role="alert">{error}</p> : null}
-        <button className="primary-action" onClick={onListen} disabled={preparing} aria-busy={preparing}>
-          <span className="action-dot" aria-hidden="true" />
-          {preparing ? 'Preparing listener…' : 'Listen to the city'}
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
-        </button>
-      </div>
       <SiteFooter />
     </main>
   );
@@ -117,15 +112,15 @@ function Listening({ places, onHome, onDiscovered }: { places: PublicPlace[]; on
   }, []);
 
   const logFrame = (frame: DetectionFrame, diagnostics: DecoderDiagnostics) => {
-    if (process.env.NODE_ENV !== 'production') console.debug('[Sonic Linz] receiver frame', { frame, diagnostics });
+    if (process.env.NODE_ENV !== 'production') console.debug('[LinzSings] receiver frame', { frame, diagnostics });
   };
 
   const handleEvent = (event: ClockedDecoderEvent) => {
-    if (process.env.NODE_ENV !== 'production') console.debug('[Sonic Linz] decoder event', event);
+    if (process.env.NODE_ENV !== 'production') console.debug('[LinzSings] decoder event', event);
     if (event.type === 'locked') setPhase('detected');
     if (event.type === 'slot' && event.diagnostics.payloadSlot >= 8) setPhase('almost');
     if (event.type === 'error') {
-      console.warn('[Sonic Linz] recognition failed', event.reason, event.diagnostics);
+      console.warn('[LinzSings] recognition failed', event.reason, event.diagnostics);
       // A damaged frame can be followed by a clean repeat. Keep listening and
       // retain the detailed failure only in the developer console.
       setPhase('listening');
@@ -139,7 +134,7 @@ function Listening({ places, onHome, onDiscovered }: { places: PublicPlace[]; on
         stop('idle');
         onDiscovered(place);
       } else {
-        console.warn('[Sonic Linz] recognised an unknown place', event.packet);
+        console.warn('[LinzSings] recognised an unknown place', event.packet);
         setError('We heard the music, but could not find its story. Please try again.');
         stop('error');
       }
@@ -171,11 +166,11 @@ function Listening({ places, onHome, onDiscovered }: { places: PublicPlace[]; on
       });
       setPhase('listening');
       timeout.current = window.setTimeout(() => {
-        setError('We could not find a Sonic Linz piece yet. Move closer to the music and try once more.');
+        setError('We could not find a LinzSings piece yet. Move closer to the music and try once more.');
         stop('error');
       }, 30_000);
     } catch (cause) {
-      console.error('[Sonic Linz] microphone start failed', cause);
+      console.error('[LinzSings] microphone start failed', cause);
       receiver.current = null;
       setError(friendlyMicrophoneError(cause));
       setPhase('error');
@@ -321,10 +316,10 @@ function ExternalLinkIcon() {
 }
 
 function SiteFooter() {
-  return <footer className="site-footer"><span>SONIC LINZ</span><span>A city heard differently</span></footer>;
+  return <footer className="site-footer"><span>LINZSINGS</span><span>A city heard differently</span></footer>;
 }
 
-export default function SonicLinz() {
+export default function LinzSings() {
   const [screen, setScreen] = useState<Screen>('introduction');
   const [places, setPlaces] = useState<PublicPlace[] | null>(null);
   const [discovered, setDiscovered] = useState<PublicPlace | null>(null);
@@ -347,7 +342,7 @@ export default function SonicLinz() {
               setScreen('discovery');
             });
           }
-        }).catch(cause => console.error('[Sonic Linz] preview data failed to load', cause));
+        }).catch(cause => console.error('[LinzSings] preview data failed to load', cause));
       }
     }
     return () => {
@@ -370,7 +365,7 @@ export default function SonicLinz() {
       setPlaces(loaded);
       setScreen('listening');
     } catch (cause) {
-      console.error('[Sonic Linz] public stories failed to load', cause);
+      console.error('[LinzSings] public stories failed to load', cause);
       setPrepareError('The listener could not be prepared. Check your connection and try again.');
     } finally {
       setPreparing(false);

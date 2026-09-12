@@ -52,7 +52,7 @@ export default function AudioDebug() {
   return (
     <main className="debug-shell">
       <header className="topbar">
-        <Link className="wordmark" href="/">SONIC LINZ</Link>
+        <Link className="wordmark" href="/">LINZSINGS</Link>
         <div className="protocol-pill"><i /> AUDIO LAB</div>
       </header>
       <div className="debug-wrap">
