@@ -1,8 +1,17 @@
 # LinzSings
 
-**Linz city has something to sing to you.** LinzSings is a mobile-first web experience that hides an official City of Linz street-record ID inside music. One device plays the transmission; another listens through its microphone, validates the signal, and reveals the matching English-language place story.
+**Linz city has something to sing to you.** LinzSings is a mobile-first web experience that hides an official City of Linz street-record ID inside music. One device uses the public street transmitter to play the transmission; another listens through its microphone, validates the signal, and reveals the matching English-language place story.
 
 Audio analysis happens entirely in the browser. Nothing is recorded or uploaded, and the live experience does not need an API or network request after its data bundle has loaded.
+
+## Live demo
+
+You can try LinzSings online without cloning or installing this repository:
+
+- [Open the public listening experience](https://linz-cipher.vercel.app)
+- [Open the public street transmitter](https://linz-cipher.vercel.app/internal/transmit)
+
+To test the complete system, open the listening experience on one device and the transmitter on another, then follow the walkthrough below.
 
 ## How it works
 
@@ -11,7 +20,20 @@ Audio analysis happens entirely in the browser. Nothing is recorded or uploaded,
 3. The listener detects four carrier frequencies, finds the packet clock and preamble, checks its CRC, and resolves the decoded Sonic ID locally.
 4. The app opens the matching story, naming history, person details, and official City of Linz source link.
 
-The public experience deliberately hides the protocol details. Developer-only pages provide transmission and receiver diagnostics during local development.
+The visitor experience deliberately hides the protocol details. The transmitter is public so anyone can demonstrate the complete project with two devices, while the detailed receiver laboratory remains a development-only tool.
+
+## Try the complete system
+
+The easiest test uses two phones, tablets, or laptops: one with a speaker and one with a microphone. The receiving page must be served over HTTPS (or `localhost`) so the browser can request microphone access.
+
+1. On the **receiving device**, open the [public experience](https://linz-cipher.vercel.app), tap **Listen to the city**, then **Start listening**, and allow microphone access.
+2. On the **transmitting device**, open the [street transmitter](https://linz-cipher.vercel.app/internal/transmit).
+3. Search for a street record and select it. Place the transmitting speaker about 20 cm from the receiving microphone and set the speaker to a comfortable, clearly audible volume.
+4. Tap **Play ambient transmission on loop**. Each loop plays a short musical introduction, the encoded SLP/1 packet, and a musical resolution.
+5. Allow 10–20 seconds for one or two complete loops. After the receiver finds the preamble and verifies the CRC, it should open the English story for the selected street.
+6. Tap **Stop** on the transmitter when finished.
+
+For the cleanest first test, use a quiet room, keep the devices off the same table to reduce vibration, and avoid headphones. If decoding does not succeed, move the devices closer, adjust the transmitter volume, reload the receiver, and grant microphone access again. Browser echo cancellation can make a same-device or same-laptop test unreliable, so two physical devices are strongly recommended.
 
 ## Quick start
 
@@ -33,9 +55,9 @@ No environment variables are required for normal development. The generated data
 | --- | --- | --- |
 | `/` | Public introduction, listening, and story discovery flow | Development and production |
 | `/debug/audio` | Carrier playback, microphone levels, decoder state, and packet diagnostics | Development only |
-| `/internal/transmit` | Search a street record and play its SLP/1 transmission continuously | Development only |
+| `/internal/transmit` | Search a street record and play its SLP/1 transmission continuously | Development and production |
 
-The diagnostic routes return `404` in production.
+The `/debug/audio` diagnostic route returns `404` in production. The public transmitter is intentionally not linked from the visitor interface; open it directly or use the link above.
 
 ## Commands
 
@@ -137,16 +159,17 @@ npm run build
 
 The suite covers packet round-trips, CRC rejection, carrier detection, clock drift, noisy and reverberant synthetic audio, limited corruption recovery, SLP/2 beacon behavior, source links, English copy, continuous transmission, and the 320–430 px visitor flow.
 
-## Physical-device test
+## Local physical-device test
 
-1. Serve the app over HTTPS and open it on two phones.
-2. On the receiving phone, tap **Listen to the city** and allow microphone access.
-3. On the transmitting phone, open `/internal/transmit` in a development build, choose a record, and start playback.
-4. Begin about 20 cm apart in a quiet room, then test at 50 cm and 1 m with realistic background noise.
-5. Use `/debug/audio` to inspect levels, carrier confidence, clock lock, payload slots, and CRC results.
+1. Run the project locally, then expose it through an HTTPS development URL or deploy a preview. A plain LAN URL such as `http://192.168.x.x:3000` will not provide microphone access in most browsers.
+2. Open the same HTTPS origin on two phones.
+3. On the receiving phone, tap **Listen to the city** and allow microphone access.
+4. On the transmitting phone, open `/internal/transmit`, choose a record, and start playback.
+5. Begin about 20 cm apart in a quiet room, then test at 50 cm and 1 m with realistic background noise.
+6. In a local development build, use `/debug/audio` to inspect levels, carrier confidence, clock lock, payload slots, and CRC results.
 
 Synthetic tests cannot certify a particular phone, speaker, case, browser, or room. A real speaker-to-microphone pass is required before a live installation.
 
 ## Deployment
 
-`npm run build` produces the deployment artifact. The Vite configuration selects the Sites/Cloudflare adapter locally and the Nitro adapter when `VERCEL=1`; `vercel.ts` supplies the Vercel build command. Keep microphone-facing deployments on HTTPS and confirm that `/debug/audio` and `/internal/transmit` remain unavailable in production.
+`npm run build` produces the deployment artifact. The Vite configuration selects the Sites/Cloudflare adapter locally and the Nitro adapter when `VERCEL=1`; `vercel.ts` supplies the Vercel build command. Keep microphone-facing deployments on HTTPS, confirm that `/internal/transmit` is reachable in production, and confirm that `/debug/audio` remains unavailable.
