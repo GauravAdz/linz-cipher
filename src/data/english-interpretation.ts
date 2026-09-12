@@ -1,4 +1,4 @@
-import { SonicEvent, type PlaceRecord } from './types';
+import { SonicEvent, type EditorialProfile, type PlaceRecord } from './types';
 
 const germanProseMarkers = new Set([
   'bezeichnung', 'benannt', 'ehemalig', 'heute', 'zwischen', 'verlaufend',
@@ -11,6 +11,38 @@ export function appearsToBeGermanProse(value: string) {
   let markers = 0;
   for (const word of words) if (germanProseMarkers.has(word)) markers += 1;
   return markers >= 3 || /\b(?:bezeichnung|verlaufend|benannt|ursprünglich)\b/i.test(value);
+}
+
+export function englishEditorialFor(
+  place: PlaceRecord,
+  narrative: { headline: string; story: string },
+): EditorialProfile {
+  const displayName = place.street.currentName || place.street.name;
+  const area = place.raw.KG?.trim();
+  const namedYear = place.history.namingStart;
+  const historicalName = place.street.historicalName;
+
+  let whyThisName: string;
+  if (place.person?.name) {
+    whyThisName = `${displayName} carries the name of ${place.person.name}${namedYear ? `, with the naming recorded in ${namedYear}` : ''}. The official City of Linz archive preserves the connection between the person and this place.`;
+  } else if (historicalName && displayName !== historicalName) {
+    whyThisName = `${historicalName} was an earlier name for this place${place.history.namingPeriod ? ` during ${place.history.namingPeriod}` : ''}. The city record now connects that former name with ${displayName}.`;
+  } else if (namedYear) {
+    whyThisName = `The City of Linz records this name from ${namedYear}. It has remained part of the city’s official street vocabulary since then.`;
+  } else {
+    whyThisName = `The City of Linz archive preserves this name and its place in the city’s street history.`;
+  }
+
+  const cityContext = area
+    ? `The official record places ${displayName} in the ${area} cadastral area of Linz. This civic detail locates the story within the city as well as within its history.`
+    : `${displayName} belongs to the official Linz street-name archive, where the city records how its public places acquired their names.`;
+
+  return {
+    lede: narrative.story,
+    whyThisName,
+    cityContext,
+    generatedBy: 'structured-fallback',
+  };
 }
 
 export function englishNarrativeFor(place: PlaceRecord) {

@@ -11,6 +11,10 @@ describe('visitor interpretations', () => {
     for (const interpretation of interpretations) {
       expect(appearsToBeGermanProse(interpretation.headline), `headline for ${interpretation.sonicId}`).toBe(false);
       expect(appearsToBeGermanProse(interpretation.story), `story for ${interpretation.sonicId}`).toBe(false);
+      expect(interpretation.editorial, `editorial profile for ${interpretation.sonicId}`).toBeDefined();
+      for (const value of [interpretation.editorial!.lede, interpretation.editorial!.whyThisName, interpretation.editorial!.cityContext]) {
+        expect(appearsToBeGermanProse(value), `profile prose for ${interpretation.sonicId}`).toBe(false);
+      }
     }
   });
 

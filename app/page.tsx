@@ -217,27 +217,95 @@ function Listening({ places, onHome, onDiscovered }: { places: PublicPlace[]; on
 
 export function Discovery({ place, onListenAgain, onHome }: { place: PublicPlace; onListenAgain: () => void; onHome: () => void }) {
   const interpretation = place.interpretation;
+  const editorial = interpretation.editorial;
   const historicalName = place.historicalName;
   const currentName = place.currentName;
   const changedName = historicalName && currentName && historicalName !== currentName;
+  const displayName = currentName || place.streetName;
+  const birthYear = place.person?.birthDate?.match(/\d{4}/)?.[0];
+  const deathYear = place.person?.deathDate?.match(/\d{4}/)?.[0];
+  const lifespan = birthYear && deathYear ? `${birthYear}–${deathYear}` : birthYear ? `Born ${birthYear}` : deathYear ? `Died ${deathYear}` : undefined;
+  const occupation = place.person?.occupation
+    ? place.person.occupation.replace(/\b\w/g, letter => letter.toLocaleUpperCase('en'))
+    : undefined;
+  const initials = place.person?.name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part[0])
+    .join('');
 
   return (
     <main className="public-shell discovery-screen screen-enter">
       <Brand onHome={onHome} />
-      <article className="discovery-article">
-        <header className="discovery-heading">
-          <span className="found-mark" aria-hidden="true"><i /></span>
-          <p className="found-label">A story found in Linz</p>
-          <h1>{currentName || place.streetName}</h1>
-          {changedName ? <p className="name-history">This street was once called <strong>{historicalName}</strong>{place.namingPeriod ? ` (${place.namingPeriod})` : ''}.</p> : historicalName && !currentName ? <p className="name-history"><strong>{historicalName}</strong> is preserved in Linz’s historical street record{place.namingPeriod ? ` from ${place.namingPeriod}` : ''}.</p> : null}
+      <article className="place-profile">
+        <header className="place-hero">
+          <div className="place-route-mark" aria-hidden="true"><i /><span /></div>
+          <div className="place-title-block">
+            <h1>{displayName}</h1>
+            {changedName ? <p className="former-name">Formerly <strong>{historicalName}</strong>{place.namingPeriod ? ` · ${place.namingPeriod}` : ''}</p> : historicalName && !currentName ? <p className="former-name"><strong>{historicalName}</strong>{place.namingPeriod ? ` · ${place.namingPeriod}` : ''}</p> : null}
+          </div>
+          <dl className="place-facts" aria-label="Place overview">
+            {place.cadastralMunicipality ? <div><dt>Within Linz</dt><dd>{place.cadastralMunicipality} cadastral area</dd></div> : null}
+            {place.namingYear ? <div><dt>{place.sourceType === 'historical' ? 'Recorded from' : 'Named'}</dt><dd>{place.namingYear}</dd></div> : null}
+            <div><dt>City record</dt><dd>{place.sourceType === 'historical' ? 'Former street name' : 'Current street name'}</dd></div>
+          </dl>
+          <p className="place-lede">{editorial?.lede ?? interpretation.story}</p>
         </header>
-        <div className="story-card">
-          <div className="story-glow" aria-hidden="true" />
-          <p className="story-label">The story</p>
-          <h2>{interpretation.headline}</h2>
-          <p className="story-body">{interpretation.story}</p>
-          {place.sourceLink ? <a className="source-link" href={place.sourceLink} target="_blank" rel="noreferrer">Read the official City of Linz record <span aria-hidden="true">↗</span></a> : null}
+
+        <div className="profile-flow">
+          <section className="profile-section profile-story">
+            <span className="route-stop" aria-hidden="true" />
+            <h2>{interpretation.headline}</h2>
+            <p>{interpretation.story}</p>
+          </section>
+
+          <section className="profile-section naming-origin">
+            <span className="route-stop" aria-hidden="true" />
+            <h2>Why this name</h2>
+            <p>{editorial?.whyThisName ?? interpretation.story}</p>
+          </section>
+
+          <section className="profile-section city-context">
+            <span className="route-stop" aria-hidden="true" />
+            <h2>Its place in Linz</h2>
+            <p>{editorial?.cityContext ?? `${displayName} belongs to the official City of Linz street-name archive.`}</p>
+          </section>
+
+          {place.person?.name ? (
+            <section className="namesake-section">
+              <div className="namesake-monogram" aria-hidden="true">{initials}</div>
+              <div className="namesake-copy">
+                <h2>The person in the place</h2>
+                <h3>{place.person.name}</h3>
+                {(lifespan || occupation) ? <p className="person-line">{[lifespan, occupation].filter(Boolean).join(' · ')}</p> : null}
+                <p>The City of Linz record connects {displayName} with {place.person.name}.</p>
+                {place.person.wikidataId ? <a href={`https://www.wikidata.org/wiki/${place.person.wikidataId}`} target="_blank" rel="noreferrer">Explore the namesake record <ExternalLinkIcon /></a> : null}
+              </div>
+            </section>
+          ) : null}
+
+          {(place.namingYear || place.removalYear || changedName) ? (
+            <section className="profile-section name-timeline">
+              <span className="route-stop" aria-hidden="true" />
+              <h2>Name through time</h2>
+              <ol>
+                {place.namingYear ? <li><time>{place.namingYear}</time><p><strong>{historicalName || displayName}</strong> enters the City of Linz record.</p></li> : null}
+                {place.removalYear && changedName ? <li><time>{place.removalYear}</time><p>The recorded name changes to <strong>{displayName}</strong>.</p></li> : null}
+                {!place.removalYear && place.sourceType === 'current' ? <li><time>Today</time><p>The place is recorded as <strong>{displayName}</strong>.</p></li> : null}
+              </ol>
+            </section>
+          ) : null}
+
+          <section className="archive-section">
+            <div>
+              <h2>Continue into the archive</h2>
+              <p>The official German-language record from the Archive of the City of Linz remains the authoritative source for this place.</p>
+            </div>
+            {place.sourceLink ? <a className="source-link" href={place.sourceLink} target="_blank" rel="noreferrer">Open the Stadtgeschichte record <ExternalLinkIcon /></a> : null}
+          </section>
         </div>
+
         <div className="discovery-actions">
           <button className="primary-action" onClick={onListenAgain}><span className="action-dot" aria-hidden="true" /> Listen again <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg></button>
           <button className="secondary-action" onClick={onHome}>Back to the start</button>
@@ -246,6 +314,10 @@ export function Discovery({ place, onListenAgain, onHome }: { place: PublicPlace
       <SiteFooter />
     </main>
   );
+}
+
+function ExternalLinkIcon() {
+  return <svg className="external-link-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8" /></svg>;
 }
 
 function SiteFooter() {

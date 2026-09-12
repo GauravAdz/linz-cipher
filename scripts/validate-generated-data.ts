@@ -12,4 +12,6 @@ if (interpretations.length !== places.length) throw new Error('Interpretation co
 if (publicStories.length !== places.length) throw new Error('Public story count mismatch');
 const nonEnglish = interpretations.filter(item => appearsToBeGermanProse(item.headline) || appearsToBeGermanProse(item.story));
 if (nonEnglish.length) throw new Error(`Found ${nonEnglish.length} likely non-English interpretations. First Sonic ID: ${nonEnglish[0].sonicId}`);
+const nonEnglishEditorial = interpretations.filter(item => item.editorial && [item.editorial.lede, item.editorial.whyThisName, item.editorial.cityContext].some(appearsToBeGermanProse));
+if (nonEnglishEditorial.length) throw new Error(`Found ${nonEnglishEditorial.length} likely non-English place profiles. First Sonic ID: ${nonEnglishEditorial[0].sonicId}`);
 console.log(`Validated ${places.length} places and ${interpretations.length} interpretations.`);

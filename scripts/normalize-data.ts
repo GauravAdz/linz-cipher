@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import Papa from 'papaparse';
-import { SonicEvent, SonicMood, placeRecordSchema, interpretationSchema, publicPlaceSchema, type PlaceRecord, type Interpretation, type PublicPlace } from '../src/data/types';
-import { englishNarrativeFor } from '../src/data/english-interpretation';
+import { SonicEvent, SonicMood, placeRecordSchema, interpretationSchema, type PlaceRecord, type Interpretation } from '../src/data/types';
+import { englishEditorialFor, englishNarrativeFor } from '../src/data/english-interpretation';
+import { buildPublicStories } from '../src/data/public-stories';
 
 type Raw = Record<string, string>;
 
@@ -12,6 +13,9 @@ function read(path: string): Raw[] {
 }
 
 function clean(value?: string) { return value?.trim() || undefined; }
+function namingYearFromDescription(value?: string) {
+  return value?.match(/\b(?:Benannt|Bezeichnung(?:\s+seit)?|Ab)\s+(\d{4})\b/i)?.[1];
+}
 function moodFor(event: SonicEvent) {
   if (event === SonicEvent.NAME_CHANGED || event === SonicEvent.HISTORICAL_NAME) return SonicMood.REFLECTIVE;
   if (event === SonicEvent.COMMEMORATION) return SonicMood.WARM;
@@ -26,6 +30,10 @@ const places: PlaceRecord[] = rows.map(({ sourceType, raw }, sonicId) => {
   const historicalName = sourceType === 'historical' ? clean(raw.Name) : undefined;
   const currentName = sourceType === 'historical' ? clean(raw['Aktuelle Straße']) : clean(raw.Name);
   const personName = clean(raw['Benannt nach']);
+  const personWikidataId = clean(raw['Wikidata Person ID'] ?? raw.Wikidata);
+  const personOccupation = clean(raw['Wikidata Person Beruf'] ?? raw['Wikidata Beruf']);
+  const personBirthDate = clean(raw['Wikidata Person Geburtsdatum'] ?? raw['Wikidata Geburtsdatum']);
+  const personDeathDate = clean(raw['Wikidata Person Sterbedatum'] ?? raw['Wikidata Sterbedatum']);
   let eventType = SonicEvent.UNKNOWN;
   if (sourceType === 'historical' && historicalName && currentName && historicalName !== currentName) eventType = SonicEvent.NAME_CHANGED;
   else if (sourceType === 'historical') eventType = SonicEvent.HISTORICAL_NAME;
@@ -34,44 +42,53 @@ const places: PlaceRecord[] = rows.map(({ sourceType, raw }, sonicId) => {
   else if (/Berg|Tal|Donau|Bach|Fluss|See/i.test(raw.Beschreibung ?? '')) eventType = SonicEvent.GEOGRAPHIC_REFERENCE;
   else if (/Ort|Gemeinde|Stadt|Land/i.test(raw.Beschreibung ?? '')) eventType = SonicEvent.PLACE_REFERENCE;
 
-  const namingStart = clean(raw['Jahr der Benennung']);
+  const namingStart = clean(raw['Jahr der Benennung']) ?? namingYearFromDescription(raw.Beschreibung);
   const namingEnd = clean(raw['Jahr der Löschung']);
   return placeRecordSchema.parse({
     sonicId,
     source: { type: sourceType, sourceId: raw.ID, canonicalKey: `${sourceType}:${raw.ID}` },
     street: { name: raw.Name, historicalName, currentName },
     history: { namingStart, namingEnd, namingPeriod: namingStart ? `${namingStart}${namingEnd ? `–${namingEnd}` : ''}` : undefined, description: clean(raw.Beschreibung) },
-    person: personName ? { name: personName, wikidataId: clean(raw['Wikidata Person ID'] ?? raw.Wikidata) } : undefined,
+    person: personName ? {
+      name: personName,
+      wikidataId: personWikidataId,
+      occupation: personOccupation,
+      birthDate: personBirthDate,
+      deathDate: personDeathDate,
+    } : undefined,
     semantic: { eventType, mood: moodFor(eventType) },
     raw,
   });
 });
 
 function fraction(id: number, salt: number) { return (((id + 1) * salt) % 89) / 88; }
-const interpretations: Interpretation[] = places.map(place => interpretationSchema.parse({
-  sonicId: place.sonicId,
-  ...englishNarrativeFor(place),
-  music: {
-    tempo: 55 + Math.round(fraction(place.sonicId, 17) * 55),
-    brightness: Number(fraction(place.sonicId, 29).toFixed(2)),
-    density: Number((.2 + fraction(place.sonicId, 11) * .55).toFixed(2)),
-    tension: Number((place.semantic.eventType === SonicEvent.NAME_CHANGED ? .55 : fraction(place.sonicId, 7) * .45).toFixed(2)),
-    warmth: Number((.35 + fraction(place.sonicId, 31) * .55).toFixed(2)),
-    rhythmicActivity: Number((.15 + fraction(place.sonicId, 13) * .55).toFixed(2)),
-    texture: place.semantic.eventType === SonicEvent.NAME_CHANGED ? 'ambient' : place.person ? 'pulse' : 'flowing',
-  },
-}));
+const previousInterpretations = fs.existsSync('data/generated/interpretations.json')
+  ? JSON.parse(fs.readFileSync('data/generated/interpretations.json', 'utf8')) as Interpretation[]
+  : [];
+const previousById = new Map(previousInterpretations.map(item => [item.sonicId, item]));
 
-const publicStories: PublicPlace[] = places.map((place, index) => publicPlaceSchema.parse({
-  sonicId: place.sonicId,
-  eventType: place.semantic.eventType,
-  streetName: place.street.name,
-  historicalName: place.street.historicalName,
-  currentName: place.street.currentName,
-  namingPeriod: place.history.namingPeriod,
-  sourceLink: place.raw.Link,
-  interpretation: interpretations[index],
-}));
+const interpretations: Interpretation[] = places.map(place => {
+  const narrative = englishNarrativeFor(place);
+  const previous = previousById.get(place.sonicId);
+  const mistralEditorial = previous?.editorial?.generatedBy === 'mistral' ? previous : undefined;
+  return interpretationSchema.parse({
+    sonicId: place.sonicId,
+    headline: mistralEditorial?.headline ?? narrative.headline,
+    story: mistralEditorial?.story ?? narrative.story,
+    editorial: mistralEditorial?.editorial ?? englishEditorialFor(place, narrative),
+    music: {
+      tempo: 55 + Math.round(fraction(place.sonicId, 17) * 55),
+      brightness: Number(fraction(place.sonicId, 29).toFixed(2)),
+      density: Number((.2 + fraction(place.sonicId, 11) * .55).toFixed(2)),
+      tension: Number((place.semantic.eventType === SonicEvent.NAME_CHANGED ? .55 : fraction(place.sonicId, 7) * .45).toFixed(2)),
+      warmth: Number((.35 + fraction(place.sonicId, 31) * .55).toFixed(2)),
+      rhythmicActivity: Number((.15 + fraction(place.sonicId, 13) * .55).toFixed(2)),
+      texture: place.semantic.eventType === SonicEvent.NAME_CHANGED ? 'ambient' : place.person ? 'pulse' : 'flowing',
+    },
+  });
+});
+
+const publicStories = buildPublicStories(places, interpretations);
 
 fs.mkdirSync('data/generated', { recursive: true });
 fs.writeFileSync('data/generated/places.json', JSON.stringify(places));
