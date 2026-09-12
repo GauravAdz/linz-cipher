@@ -36,6 +36,7 @@ test('reveals an English place story without protocol metadata', async ({ page }
   await expect(page.getByText(/daily practice of beating out uniforms and blankets/i)).toBeVisible();
   await expect(page.getByRole('heading', { name: /Name through time/i })).toBeVisible();
   await expect(page.getByRole('link', { name: /Open the Stadtgeschichte record/i })).toHaveAttribute('href', 'https://stadtgeschichte.linz.at/strassennamen/index.php?ID=1716&action=strassendetail&hist=historisch');
+  await expect(page.getByRole('link', { name: 'Listen again', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /Listen again/i })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Back to the start', exact: true })).toBeVisible();
   await expect(page.getByText(/SIGNAL DECODED|CHECKSUM|Sonic Record|payload/i)).toHaveCount(0);

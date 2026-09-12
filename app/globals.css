@@ -548,11 +548,34 @@ a:focus-visible {
 .privacy-note p { margin: 0; font-size: 0.8125rem; line-height: 1.55; }
 .privacy-note strong { color: var(--text-soft); font-weight: 660; }
 
+.discovery-utility {
+  width: 100%;
+  max-width: 72rem;
+  min-height: 2.75rem;
+  margin: var(--space-2) auto 0;
+  display: flex;
+  align-items: center;
+}
+
+.discovery-listen-again {
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  color: var(--cyan-bright);
+  font-size: var(--type-small);
+  font-weight: 650;
+  text-decoration-line: underline;
+  text-decoration-color: rgba(166, 247, 247, 0.62);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.32em;
+  transition: color var(--duration-fast) ease, text-decoration-color var(--duration-fast) ease;
+}
+
 .place-profile {
   width: 100%;
   max-width: 72rem;
   margin: 0 auto;
-  padding: clamp(2.75rem, 9vw, 6rem) 0 var(--space-7);
+  padding: clamp(1.5rem, 5vw, 3.5rem) 0 var(--space-7);
 }
 
 .place-hero {
@@ -876,6 +899,7 @@ a:focus-visible {
   .primary-action:hover { background: var(--linz-yellow-bright); box-shadow: 0 1.2rem 3.2rem rgba(255, 213, 0, 0.28); }
   .secondary-action:hover { background: rgba(255, 255, 255, 0.06); border-color: var(--line-strong); }
   .wordmark:hover, .text-back:hover, .source-link:hover { color: var(--cyan-bright); }
+  .discovery-listen-again:hover { color: var(--linz-yellow-bright); text-decoration-color: currentColor; }
 }
 
 @media (min-width: 42rem) {

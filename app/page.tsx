@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SonicReceiver } from '../src/audio/receiver';
 import type { ClockedDecoderEvent, DecoderDiagnostics } from '../src/audio/clocked-decoder';
@@ -233,6 +234,18 @@ export function Discovery({ place, onListenAgain, onHome }: { place: PublicPlace
   return (
     <main className="public-shell discovery-screen screen-enter">
       <Brand onHome={onHome} />
+      <nav className="discovery-utility" aria-label="Story actions">
+        <Link
+          className="discovery-listen-again"
+          href="/"
+          onClick={event => {
+            event.preventDefault();
+            onListenAgain();
+          }}
+        >
+          Listen again
+        </Link>
+      </nav>
       <article className="place-profile">
         <header className="place-hero">
           <div className="place-route-mark" aria-hidden="true"><i /><span /></div>
