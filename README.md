@@ -13,6 +13,14 @@ You can try LinzSings online without cloning or installing this repository:
 
 To test the complete system, open the listening experience on one device and the transmitter on another, then follow the walkthrough below.
 
+## A visitor's journey in Linz
+
+Imagine someone exploring Linz on foot. Near a street or public square, they notice a LinzSings audio station playing a short piece of ambient music. There is no screen explaining the location, so the music becomes an invitation to look closer.
+
+Curious about what they are hearing, the visitor opens LinzSings on their phone, taps **Listen to the city**, and holds the phone near the station. The music contains a hidden identifier for that location. Once the app recognizes and verifies it, the visitor sees the story behind the place: how its name changed, who it may commemorate, and links to the official City of Linz records.
+
+The result is a small moment of discovery during the journey. Instead of searching for a street name or scanning a code, the visitor learns about their surroundings by listening to the city itself. The microphone analysis happens on the phone, and no audio is recorded or uploaded.
+
 ## How it works
 
 1. A visitor taps **Listen to the city** and grants microphone access.
